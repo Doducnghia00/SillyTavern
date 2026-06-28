@@ -1,0 +1,1746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <base href="/">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0">
+    <title>AI Character Creator — SillyTavern</title>
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+    <link href="webfonts/NotoSans/stylesheet.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #1a1a1c;
+            --bg-secondary: #252528;
+            --bg-tertiary: #2e2e32;
+            --bg-card: #2a2a2e;
+            --bg-input: #1e1e21;
+            --text-primary: #e0e0e0;
+            --text-secondary: #a0a0a0;
+            --text-muted: #707070;
+            --accent: #7c5cbf;
+            --accent-hover: #9370db;
+            --accent-dim: rgba(124, 92, 191, 0.15);
+            --border: #3a3a3e;
+            --success: #4caf50;
+            --error: #ef5350;
+            --warning: #ff9800;
+            --radius: 8px;
+            --radius-lg: 12px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Noto Sans', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+        .container { max-width: 960px; margin: 0 auto; padding: 20px; }
+
+        /* ── Header ── */
+        .header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 0; border-bottom: 1px solid var(--border); margin-bottom: 24px; flex-wrap: wrap; gap: 12px;
+        }
+        .header h1 { font-size: 1.4em; font-weight: 600; }
+        .header h1 span { color: var(--accent); }
+        .header-right { display: flex; align-items: center; gap: 12px; }
+        .back-link { color: var(--text-secondary); text-decoration: none; font-size: 0.85em; }
+        .back-link:hover { color: var(--accent); }
+
+        /* ── Badges ── */
+        .badge {
+            font-size: 0.78em; padding: 3px 10px; border-radius: 20px;
+            border: 1px solid var(--border); display: inline-flex; align-items: center; gap: 6px;
+        }
+        .badge.ok { border-color: var(--success); color: var(--success); }
+        .badge.warn { border-color: var(--warning); color: var(--warning); }
+
+        /* ── Sections ── */
+        .section {
+            background: var(--bg-secondary); border-radius: var(--radius-lg);
+            padding: 20px; margin-bottom: 16px; border: 1px solid var(--border);
+        }
+        .section-title {
+            font-size: 0.85em; font-weight: 600; color: var(--text-secondary);
+            text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .section-title .icon { font-size: 1.1em; }
+
+        /* ── Form elements ── */
+        label.field-label {
+            display: block; font-weight: 600; margin-bottom: 4px;
+            font-size: 0.85em; color: var(--text-secondary);
+        }
+        textarea, input[type="text"], select {
+            width: 100%; padding: 10px 12px; border-radius: var(--radius);
+            border: 1px solid var(--border); background: var(--bg-input);
+            color: var(--text-primary); font-family: inherit; font-size: 0.9em;
+            transition: border-color 0.2s;
+        }
+        textarea:focus, input:focus, select:focus { outline: none; border-color: var(--accent); }
+        textarea { resize: vertical; min-height: 60px; }
+        select { cursor: pointer; }
+        .hint { font-size: 0.78em; color: var(--text-muted); margin-top: 4px; }
+        .field-group { margin-bottom: 12px; }
+        .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        @media (max-width: 640px) { .field-row { grid-template-columns: 1fr; } }
+
+        /* ── Buttons ── */
+        .btn {
+            padding: 10px 20px; border-radius: var(--radius); border: none;
+            font-family: inherit; font-size: 0.9em; font-weight: 600;
+            cursor: pointer; transition: all 0.15s; display: inline-flex;
+            align-items: center; gap: 6px;
+        }
+        .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); }
+        .btn-secondary:hover:not(:disabled) { background: var(--border); }
+        .btn-success { background: var(--success); color: white; }
+        .btn-success:hover:not(:disabled) { background: #66bb6a; }
+        .btn-ghost { background: transparent; color: var(--text-secondary); padding: 6px 10px; font-size: 0.8em; }
+        .btn-ghost:hover { color: var(--accent); }
+        .btn-sm { padding: 6px 14px; font-size: 0.82em; }
+        .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        /* ── Status bar ── */
+        .status-bar {
+            text-align: center; padding: 10px; margin-bottom: 12px;
+            border-radius: var(--radius); display: none; font-size: 0.88em;
+        }
+        .status-bar.visible { display: block; }
+        .status-bar.info { background: var(--accent-dim); color: var(--accent); }
+        .status-bar.error { background: rgba(239,83,80,0.12); color: var(--error); }
+        .status-bar.success { background: rgba(76,175,80,0.12); color: var(--success); }
+
+        /* ── Debug log ── */
+        .debug-panel { display: none; }
+        .debug-panel.visible { display: block; }
+        .debug-live {
+            background: rgba(124, 92, 191, 0.10);
+            border: 1px solid rgba(124, 92, 191, 0.28);
+            border-radius: var(--radius);
+            padding: 8px 10px;
+            margin-bottom: 8px;
+            font-family: 'Noto Sans Mono', monospace;
+            font-size: 0.78em;
+            color: #d8ccff;
+            white-space: pre-wrap;
+        }
+        .debug-log {
+            background: #101012;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 10px;
+            max-height: 320px;
+            overflow: auto;
+            font-family: 'Noto Sans Mono', monospace;
+            font-size: 0.78em;
+            line-height: 1.45;
+            white-space: pre-wrap;
+            color: #cfcfcf;
+        }
+        .debug-log .ok { color: #81c784; }
+        .debug-log .warn { color: #ffb74d; }
+        .debug-log .err { color: #ef9a9a; }
+        .debug-log .token { color: #90caf9; }
+
+        /* ── Spinner ── */
+        .spinner {
+            display: inline-block; width: 16px; height: 16px;
+            border: 2px solid rgba(255,255,255,0.3); border-top-color: white;
+            border-radius: 50%; animation: spin 0.7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Model selector row ── */
+        .model-row {
+            display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+        }
+        .model-row select { flex: 1; min-width: 200px; }
+        .model-row .badge { white-space: nowrap; }
+
+        /* ── Prompt editor ── */
+        .prompt-toggle {
+            cursor: pointer; display: flex; align-items: center; gap: 6px;
+            font-size: 0.82em; color: var(--text-muted); margin-bottom: 8px;
+            user-select: none;
+        }
+        .prompt-toggle:hover { color: var(--accent); }
+        .prompt-toggle .arrow { transition: transform 0.2s; }
+        .prompt-toggle.open .arrow { transform: rotate(90deg); }
+        .prompt-editor { display: none; }
+        .prompt-editor.open { display: block; }
+        .prompt-editor textarea {
+            font-family: 'Noto Sans Mono', monospace; font-size: 0.8em;
+            min-height: 200px; line-height: 1.5;
+        }
+
+        /* ── Character preview card ── */
+        .char-card {
+            background: var(--bg-card); border-radius: var(--radius-lg);
+            border: 1px solid var(--border); overflow: hidden; display: none;
+        }
+        .char-card.visible { display: block; }
+
+        .char-card-header {
+            background: linear-gradient(135deg, rgba(124,92,191,0.15), rgba(124,92,191,0.05));
+            padding: 20px; border-bottom: 1px solid var(--border);
+        }
+        .char-card-name {
+            font-size: 1.4em; font-weight: 700; color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+        .char-card-meta {
+            display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+        }
+
+        .char-card-body { padding: 20px; }
+
+        /* Collapsible field panels */
+        .field-panel {
+            margin-bottom: 12px; border: 1px solid var(--border);
+            border-radius: var(--radius); overflow: hidden;
+        }
+        .field-panel-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 14px; background: var(--bg-tertiary); cursor: pointer;
+            user-select: none; font-size: 0.88em; font-weight: 600;
+        }
+        .field-panel-header:hover { background: #363639; }
+        .field-panel-header .arrow { transition: transform 0.2s; font-size: 0.8em; color: var(--text-muted); }
+        .field-panel-header.open .arrow { transform: rotate(90deg); }
+        .field-panel-body { display: none; padding: 12px 14px; }
+        .field-panel-body.open { display: block; }
+        .field-panel-body textarea { min-height: 80px; }
+        .field-panel-body .preview-text {
+            white-space: pre-wrap; font-size: 0.88em; color: var(--text-primary);
+            line-height: 1.6; max-height: 300px; overflow-y: auto;
+        }
+
+        /* Avatar cropper */
+        .avatar-cropper { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
+        @media (max-width: 720px) { .avatar-cropper { grid-template-columns: 1fr; } }
+        .crop-stage {
+            position: relative; width: 256px; max-width: 100%; aspect-ratio: 2 / 3;
+            border-radius: var(--radius-lg); overflow: hidden;
+            border: 1px solid var(--border); background: #111;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+        }
+        .crop-stage canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+        .crop-stage.dragging canvas { cursor: grabbing; }
+        .crop-placeholder {
+            position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+            padding: 18px; text-align: center; color: var(--text-muted); pointer-events: none;
+            background: repeating-linear-gradient(45deg, #17171a, #17171a 10px, #1d1d21 10px, #1d1d21 20px);
+        }
+        .crop-placeholder.hidden { display: none; }
+        .crop-badge {
+            position: absolute; right: 8px; bottom: 8px; font-size: 0.72em;
+            padding: 3px 8px; border-radius: 99px; background: rgba(0,0,0,0.68); color: #fff;
+            border: 1px solid rgba(255,255,255,0.15); pointer-events: none;
+        }
+        .crop-controls { display: grid; gap: 10px; }
+        .crop-controls.hidden { display: none; }
+        .crop-controls input[type="range"] { width: 100%; }
+        .file-input { color: var(--text-secondary); font-size: 0.85em; }
+
+        /* Tags */
+        .tags-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .tag-chip {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 3px 10px; border-radius: 20px; font-size: 0.78em;
+            background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(124,92,191,0.3);
+        }
+        .tag-chip .remove { cursor: pointer; opacity: 0.6; font-weight: bold; }
+        .tag-chip .remove:hover { opacity: 1; }
+        .tag-input {
+            border: none; background: none; color: var(--text-primary);
+            font-family: inherit; font-size: 0.82em; outline: none;
+            min-width: 80px; padding: 4px;
+        }
+
+        /* Greetings */
+        .greeting-item {
+            display: flex; gap: 8px; margin-bottom: 8px; align-items: flex-start;
+        }
+        .greeting-item textarea { flex: 1; min-height: 60px; }
+
+        /* Character spine + quality audit */
+        .spine-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        @media (max-width: 720px) { .spine-grid { grid-template-columns: 1fr; } }
+        .spine-item, .audit-check {
+            background: rgba(255,255,255,0.025);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 9px 10px;
+        }
+        .spine-label {
+            color: var(--text-secondary); font-size: 0.74em; text-transform: uppercase;
+            letter-spacing: 0.45px; margin-bottom: 3px; font-weight: 700;
+        }
+        .spine-text { font-size: 0.86em; white-space: pre-wrap; }
+        .audit-summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+        .audit-score {
+            font-weight: 800; padding: 5px 10px; border-radius: 999px;
+            border: 1px solid var(--border); background: var(--bg-input);
+        }
+        .audit-score.strong { color: var(--success); border-color: rgba(76,175,80,0.55); }
+        .audit-score.good { color: #8bc34a; border-color: rgba(139,195,74,0.55); }
+        .audit-score.needs-work { color: var(--warning); border-color: rgba(255,152,0,0.55); }
+        .audit-score.weak { color: var(--error); border-color: rgba(239,83,80,0.55); }
+        .audit-list { display: grid; gap: 6px; max-height: 330px; overflow: auto; padding-right: 2px; }
+        .audit-check { display: grid; grid-template-columns: auto 1fr; gap: 7px 9px; align-items: start; font-size: 0.82em; }
+        .audit-check.pass { border-left: 3px solid var(--success); }
+        .audit-check.fail.warn { border-left: 3px solid var(--warning); }
+        .audit-check.fail.error { border-left: 3px solid var(--error); }
+        .audit-check .audit-icon { font-weight: 800; }
+        .audit-check.pass .audit-icon { color: var(--success); }
+        .audit-check.fail.warn .audit-icon { color: var(--warning); }
+        .audit-check.fail.error .audit-icon { color: var(--error); }
+        .audit-detail { color: var(--text-muted); grid-column: 2; }
+        .audit-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+        .probe-list { display: grid; gap: 10px; }
+        .probe-item {
+            background: rgba(255,255,255,0.025);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--border);
+            border-radius: var(--radius);
+            padding: 10px 12px;
+        }
+        .probe-item.pass { border-left-color: var(--success); }
+        .probe-item.fail { border-left-color: var(--warning); }
+        .probe-title { display:flex; align-items:center; justify-content:space-between; gap:8px; font-weight:700; font-size:0.86em; }
+        .probe-reply { white-space: pre-wrap; margin-top: 7px; font-size: 0.84em; color: var(--text-primary); max-height: 180px; overflow:auto; }
+        .probe-flags { color: var(--warning); font-size:0.78em; margin-top:5px; }
+
+        /* Actions bar */
+        .actions-bar {
+            display: flex; gap: 10px; justify-content: flex-end;
+            padding: 16px 0; border-top: 1px solid var(--border); margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        /* Refine row */
+        .refine-row { display: flex; gap: 8px; margin-top: 12px; display: none; }
+        .refine-row.visible { display: flex; }
+        .refine-row input { flex: 1; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>✨ <span>AI</span> Character Creator</h1>
+            <div class="header-right">
+                <span id="connectionBadge" class="badge">...</span>
+                <a href="/" class="back-link">← Back</a>
+            </div>
+        </div>
+
+        <!-- Status -->
+        <div id="statusBar" class="status-bar"></div>
+
+        <!-- Model & Connection -->
+        <div class="section">
+            <div class="section-title"><span class="icon">🔌</span> AI Connection</div>
+            <div class="field-group">
+                <label class="field-label">Connection Profile</label>
+                <div class="model-row">
+                    <select id="profileSelect" onchange="handleProfileChange()">
+                        <option value="">Loading profiles...</option>
+                    </select>
+                    <button class="btn btn-ghost btn-sm" onclick="refreshProfiles()" title="Refresh connection profiles">↻ Profiles</button>
+                </div>
+                <p class="hint">Choose a SillyTavern Connection Manager profile first. Models are loaded from that profile's provider/API URL/key.</p>
+            </div>
+            <div class="field-group">
+                <label class="field-label">Model</label>
+                <div class="model-row">
+                    <select id="modelSelect">
+                        <option value="">Loading models...</option>
+                    </select>
+                    <button class="btn btn-ghost btn-sm" onclick="refreshModels()" title="Refresh model list">↻ Models</button>
+                <button id="btnTestModel" class="btn btn-secondary btn-sm" onclick="testModel()" title="Send 'hi' to selected model">🧪 Test Model</button>
+                <span id="providerBadge" class="badge">...</span>
+                </div>
+            </div>
+            <label class="hint" style="display:flex;align-items:center;gap:6px;margin-top:8px;">
+                <input type="checkbox" id="streamToggle" checked style="width:auto;">
+                Use streaming when supported (helps avoid gateway timeout by receiving tokens earlier)
+            </label>
+            <label class="hint" style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+                <input type="checkbox" id="debugToggle" style="width:auto;" onchange="toggleDebugPanel(this.checked)">
+                Debug mode: show realtime request/stream/parse logs
+            </label>
+            <p class="hint" style="margin-top:6px;">Profile controls provider/API URL/secret. Model list reloads after profile changes; you can still type a custom model.</p>
+        </div>
+
+        <!-- Debug Log -->
+        <div id="debugPanel" class="section debug-panel">
+            <div class="section-title"><span class="icon">🐞</span> Debug Log</div>
+            <div class="btn-group" style="margin-bottom:8px;">
+                <button class="btn btn-ghost btn-sm" onclick="clearDebugLog()">Clear log</button>
+            </div>
+            <div id="debugLive" class="debug-live">Idle. Start generation to see request/stream progress.</div>
+            <div id="debugLog" class="debug-log">Debug mode is enabled. Logs will appear here during generation.</div>
+        </div>
+
+        <!-- Prompt Editor -->
+        <div class="section">
+            <div class="prompt-toggle" id="promptToggle" onclick="togglePrompt()">
+                <span class="arrow">▶</span>
+                <span>📝 System Prompt (click to view/edit)</span>
+            </div>
+            <div class="prompt-editor" id="promptEditor">
+                <textarea id="systemPromptInput" rows="12" spellcheck="false"></textarea>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+                    <button class="btn btn-ghost btn-sm" onclick="resetPrompt()">↺ Reset to default</button>
+                    <span class="hint">This prompt instructs the AI on how to generate the character card.</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Description Input -->
+        <div class="section">
+            <div class="section-title"><span class="icon">✏️</span> Describe Your Character</div>
+            <div class="field-group">
+                <textarea id="charDescription" placeholder="Example: A mysterious elven blacksmith who runs a forge in a hidden underground city. She's blind but can sense the quality of metals through touch. Sarcastic and blunt, but secretly cares deeply about her apprentices. Speaks with dwarven slang despite being an elf." rows="5"></textarea>
+                <p class="hint">Be as detailed or brief as you want. The AI will expand your description into a full character card.</p>
+            </div>
+            <div class="field-group">
+                <input type="text" id="styleHint" placeholder="Optional: style/tone (e.g. 'dark fantasy', 'slice of life', 'comedic')" />
+            </div>
+            <div class="btn-group">
+                <button id="btnGenerate" class="btn btn-primary" onclick="generateCard()">🪄 Generate Character</button>
+            </div>
+        </div>
+
+        <!-- Avatar Cropper -->
+        <div class="section">
+            <div class="section-title"><span class="icon">🖼️</span> Avatar Cropper for PNG Card</div>
+            <div class="avatar-cropper">
+                <div class="crop-stage" id="cropStage">
+                    <canvas id="avatarCanvas" width="256" height="384" aria-label="Avatar crop preview"></canvas>
+                    <div id="cropPlaceholder" class="crop-placeholder">Upload an image, then drag to position the crop.</div>
+                    <div id="cropSizeBadge" class="crop-badge">512×768</div>
+                </div>
+                <div class="crop-controls">
+                    <div class="field-group">
+                        <label class="field-label">Avatar image</label>
+                        <input class="file-input" type="file" id="avatarInput" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/avif" onchange="handleAvatarUpload(event)">
+                        <p class="hint">The crop box is SillyTavern's portrait ratio. Export/import will create a real 512×768 PNG card with metadata.</p>
+                    </div>
+                    <div id="avatarCropControls" class="crop-controls hidden">
+                        <div class="field-group">
+                            <label class="field-label">Zoom <span id="zoomValue" class="hint">100%</span></label>
+                            <input type="range" id="avatarZoom" min="1" max="3" step="0.01" value="1" oninput="setAvatarZoom(this.value)">
+                            <p class="hint">Drag the image in the preview to choose the crop. Mouse wheel also zooms.</p>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-secondary btn-sm" onclick="centerAvatarCrop()">Center</button>
+                            <button class="btn btn-secondary btn-sm" onclick="resetAvatarCrop()">Reset crop</button>
+                            <button class="btn btn-ghost btn-sm" onclick="clearAvatar()">Clear image</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Character Card Result -->
+        <div id="charCard" class="char-card">
+            <div class="char-card-header">
+                <div class="char-card-name" id="cardNameDisplay">Character Name</div>
+                <div class="char-card-meta" id="cardTagsDisplay"></div>
+            </div>
+
+            <div class="char-card-body">
+                <div class="field-row">
+                    <div class="field-panel" data-open="true">
+                        <div class="field-panel-header open" onclick="togglePanel(this)">
+                            <span>🧭 Character Spine</span><span class="arrow">▶</span>
+                        </div>
+                        <div class="field-panel-body open">
+                            <div id="spineGrid" class="spine-grid"></div>
+                            <p class="hint">The spine is the RP core: desire, flaw, tension, {{user}} hook, conflict engine, and voice.</p>
+                        </div>
+                    </div>
+                    <div class="field-panel" data-open="true">
+                        <div class="field-panel-header open" onclick="togglePanel(this)">
+                            <span>✅ Quality Audit</span><span class="arrow">▶</span>
+                        </div>
+                        <div class="field-panel-body open">
+                            <div id="qualityAudit"></div>
+                            <div class="audit-actions">
+                                <button class="btn btn-ghost btn-sm" onclick="auditCurrentCard()">↻ Re-check after edits</button>
+                                <span class="hint">Deterministic checks; use Refine to fix failed items.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="field-panel" data-open="true">
+                    <div class="field-panel-header open" onclick="togglePanel(this)">
+                        <span>🧪 RP Probes</span><span class="arrow">▶</span>
+                    </div>
+                    <div class="field-panel-body open">
+                        <div id="probeResults"><p class="hint">Run probes after generation to test whether {{char}} keeps voice, agency, and secrets under pressure.</p></div>
+                        <div class="audit-actions">
+                            <button id="btnRunProbes" class="btn btn-secondary btn-sm" onclick="runRpProbes()">🧪 Run RP Probes</button>
+                            <span class="hint">Sends 3 short test turns to the selected model; may take 20-90 seconds.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Editable fields as collapsible panels -->
+                <div class="field-panel" data-field="name">
+                    <div class="field-panel-header" onclick="togglePanel(this)">
+                        <span>Name</span><span class="arrow">▶</span>
+                    </div>
+                    <div class="field-panel-body">
+                        <input type="text" id="field_name" oninput="updateCardHeader()" />
+                    </div>
+                </div>
+
+                <div class="field-panel" data-field="description" data-open="true">
+                    <div class="field-panel-header" onclick="togglePanel(this)">
+                        <span>📋 Description (Character Profile)</span><span class="arrow">▶</span>
+                    </div>
+                    <div class="field-panel-body open">
+                        <div class="preview-text" id="preview_description"></div>
+                        <textarea id="field_description" style="display:none;" rows="10"></textarea>
+                        <button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="toggleEdit('description')">✏️ Edit</button>
+                    </div>
+                </div>
+
+                <div class="field-row">
+                    <div class="field-panel" data-field="personality">
+                        <div class="field-panel-header" onclick="togglePanel(this)">
+                            <span>💫 Personality</span><span class="arrow">▶</span>
+                        </div>
+                        <div class="field-panel-body">
+                            <div class="preview-text" id="preview_personality"></div>
+                            <textarea id="field_personality" style="display:none;" rows="3"></textarea>
+                            <button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="toggleEdit('personality')">✏️ Edit</button>
+                        </div>
+                    </div>
+                    <div class="field-panel" data-field="scenario">
+                        <div class="field-panel-header" onclick="togglePanel(this)">
+                            <span>🎭 Scenario</span><span class="arrow">▶</span>
+                        </div>
+                        <div class="field-panel-body">
+                            <div class="preview-text" id="preview_scenario"></div>
+                            <textarea id="field_scenario" style="display:none;" rows="3"></textarea>
+                            <button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="toggleEdit('scenario')">✏️ Edit</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="field-panel" data-field="first_mes" data-open="true">
+                    <div class="field-panel-header" onclick="togglePanel(this)">
+                        <span>💬 First Message (Greeting)</span><span class="arrow">▶</span>
+                    </div>
+                    <div class="field-panel-body open">
+                        <div class="preview-text" id="preview_first_mes"></div>
+                        <textarea id="field_first_mes" style="display:none;" rows="8"></textarea>
+                        <button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="toggleEdit('first_mes')">✏️ Edit</button>
+                    </div>
+                </div>
+
+                <div class="field-panel" data-field="mes_example">
+                    <div class="field-panel-header" onclick="togglePanel(this)">
+                        <span>📖 Example Messages</span><span class="arrow">▶</span>
+                    </div>
+                    <div class="field-panel-body">
+                        <div class="preview-text" id="preview_mes_example"></div>
+                        <textarea id="field_mes_example" style="display:none;" rows="5"></textarea>
+                        <button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="toggleEdit('mes_example')">✏️ Edit</button>
+                    </div>
+                </div>
+
+                <div class="field-row">
+                    <div class="field-panel" data-field="system_prompt">
+                        <div class="field-panel-header" onclick="togglePanel(this)">
+                            <span>⚙️ System Prompt</span><span class="arrow">▶</span>
+                        </div>
+                        <div class="field-panel-body">
+                            <div class="preview-text" id="preview_system_prompt"></div>
+                            <textarea id="field_system_prompt" style="display:none;" rows="4"></textarea>
+                            <button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="toggleEdit('system_prompt')">✏️ Edit</button>
+                        </div>
+                    </div>
+                    <div class="field-panel" data-field="post_history_instructions">
+                        <div class="field-panel-header" onclick="togglePanel(this)">
+                            <span>📜 Post-History Instructions</span><span class="arrow">▶</span>
+                        </div>
+                        <div class="field-panel-body">
+                            <div class="preview-text" id="preview_post_history_instructions"></div>
+                            <textarea id="field_post_history_instructions" style="display:none;" rows="4"></textarea>
+                            <button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="toggleEdit('post_history_instructions')">✏️ Edit</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="field-panel" data-field="creator_notes">
+                    <div class="field-panel-header" onclick="togglePanel(this)">
+                        <span>📌 Creator Notes</span><span class="arrow">▶</span>
+                    </div>
+                    <div class="field-panel-body">
+                        <input type="text" id="field_creator_notes" />
+                    </div>
+                </div>
+
+                <!-- Tags -->
+                <div class="field-panel" data-open="true">
+                    <div class="field-panel-header" onclick="togglePanel(this)">
+                        <span>🏷️ Tags</span><span class="arrow">▶</span>
+                    </div>
+                    <div class="field-panel-body open">
+                        <div class="tags-row" id="tagsContainer">
+                            <input type="text" class="tag-input" id="tagInput" placeholder="Type and press Enter..." onkeydown="handleTagKey(event)" />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Alternate Greetings -->
+                <div class="field-panel">
+                    <div class="field-panel-header" onclick="togglePanel(this)">
+                        <span>💬 Alternate Greetings</span><span class="arrow">▶</span>
+                    </div>
+                    <div class="field-panel-body">
+                        <div id="greetingsList"></div>
+                        <button class="btn btn-ghost btn-sm" onclick="addGreeting()" style="margin-top:4px;">+ Add Greeting</button>
+                    </div>
+                </div>
+
+                <!-- Version -->
+                <div class="field-group" style="margin-top:8px;">
+                    <label class="field-label">Character Version</label>
+                    <input type="text" id="field_character_version" value="1.0.0" style="max-width:200px;" />
+                </div>
+
+                <!-- Refine -->
+                <div class="refine-row" id="refineRow">
+                    <input type="text" id="refineInstruction" placeholder="e.g. 'Make her more mysterious', 'Add a dark backstory', 'Change tone to comedic'" />
+                    <button class="btn btn-secondary btn-sm" onclick="refineCard()">🔧 Refine</button>
+                </div>
+
+                <!-- Actions -->
+                <div class="actions-bar">
+                    <button class="btn btn-secondary" onclick="toggleRefine()">🔧 Refine with AI</button>
+                    <button class="btn btn-secondary" onclick="downloadJSON()">📥 Download JSON</button>
+                    <button class="btn btn-secondary" onclick="downloadPNG()">🖼️ Download PNG</button>
+                    <button class="btn btn-success" onclick="importToSillyTavern()">🚀 Import to SillyTavern</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ── State ────────────────────────────────────────────────────────────
+        let currentCard = null;
+        let tags = [];
+        let greetings = [];
+        let csrfToken = '';
+        let defaultPrompt = '';
+        let currentPromptVersion = '';
+        let currentProvider = '';
+        let currentProfileId = '';
+        let currentModel = '';
+        let avatarFile = null;
+        let avatarObjectUrl = null;
+        let avatarImage = null;
+        let avatarOutput = { width: 512, height: 768 };
+        let cropState = { x: 0, y: 0, scale: 1, minScale: 1, zoom: 1, dragging: false, lastX: 0, lastY: 0 };
+        let debugRun = null;
+
+        // ── CSRF ─────────────────────────────────────────────────────────────
+        async function getCsrf() {
+            try {
+                const r = await fetch('/csrf-token');
+                const d = await r.json();
+                csrfToken = d.token || '';
+            } catch { csrfToken = ''; }
+        }
+        function headers() {
+            return { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken };
+        }
+        function formHeaders() {
+            return { 'X-CSRF-Token': csrfToken };
+        }
+
+        // ── Avatar cropper ───────────────────────────────────────────────────
+        function initAvatarCropper() {
+            const canvas = document.getElementById('avatarCanvas');
+            if (!canvas) return;
+
+            canvas.addEventListener('pointerdown', e => {
+                if (!avatarImage) return;
+                cropState.dragging = true;
+                cropState.lastX = e.clientX;
+                cropState.lastY = e.clientY;
+                canvas.setPointerCapture?.(e.pointerId);
+                document.getElementById('cropStage').classList.add('dragging');
+            });
+            canvas.addEventListener('pointermove', e => {
+                if (!cropState.dragging || !avatarImage) return;
+                cropState.x += e.clientX - cropState.lastX;
+                cropState.y += e.clientY - cropState.lastY;
+                cropState.lastX = e.clientX;
+                cropState.lastY = e.clientY;
+                clampAvatarCrop();
+                drawAvatarCrop();
+            });
+            canvas.addEventListener('pointerup', e => endAvatarDrag(e));
+            canvas.addEventListener('pointercancel', e => endAvatarDrag(e));
+            canvas.addEventListener('wheel', e => {
+                if (!avatarImage) return;
+                e.preventDefault();
+                const next = Math.max(1, Math.min(3, cropState.zoom + (e.deltaY > 0 ? -0.08 : 0.08)));
+                document.getElementById('avatarZoom').value = String(next);
+                setAvatarZoom(next);
+            }, { passive: false });
+
+            drawAvatarCrop();
+        }
+
+        function endAvatarDrag(e) {
+            cropState.dragging = false;
+            document.getElementById('cropStage')?.classList.remove('dragging');
+            try { document.getElementById('avatarCanvas')?.releasePointerCapture?.(e.pointerId); } catch {}
+        }
+
+        function handleAvatarUpload(event) {
+            const file = event.target.files?.[0] || null;
+            if (!file) return clearAvatar(false);
+
+            avatarFile = file;
+            if (avatarObjectUrl) URL.revokeObjectURL(avatarObjectUrl);
+            avatarObjectUrl = URL.createObjectURL(file);
+
+            const img = new Image();
+            img.onload = () => {
+                avatarImage = img;
+                document.getElementById('cropPlaceholder').classList.add('hidden');
+                document.getElementById('avatarCropControls').classList.remove('hidden');
+                resetAvatarCrop();
+                showStatus(`🖼️ Avatar loaded: ${file.name}. Drag/zoom crop before export/import.`, 'info');
+            };
+            img.onerror = () => {
+                clearAvatar(false);
+                showStatus('Avatar image could not be loaded.', 'error');
+            };
+            img.src = avatarObjectUrl;
+        }
+
+        function clearAvatar(clearInput = true) {
+            avatarFile = null;
+            avatarImage = null;
+            if (avatarObjectUrl) URL.revokeObjectURL(avatarObjectUrl);
+            avatarObjectUrl = null;
+            cropState = { x: 0, y: 0, scale: 1, minScale: 1, zoom: 1, dragging: false, lastX: 0, lastY: 0 };
+
+            document.getElementById('cropPlaceholder')?.classList.remove('hidden');
+            document.getElementById('avatarCropControls')?.classList.add('hidden');
+            const zoom = document.getElementById('avatarZoom');
+            if (zoom) zoom.value = '1';
+            updateZoomLabel();
+            drawAvatarCrop();
+            if (clearInput) document.getElementById('avatarInput').value = '';
+        }
+
+        function getCanvasSize() {
+            const canvas = document.getElementById('avatarCanvas');
+            return { width: canvas.width, height: canvas.height };
+        }
+
+        function resetAvatarCrop() {
+            if (!avatarImage) return;
+            const { width, height } = getCanvasSize();
+            cropState.minScale = Math.max(width / avatarImage.naturalWidth, height / avatarImage.naturalHeight);
+            cropState.zoom = 1;
+            cropState.scale = cropState.minScale;
+            const zoom = document.getElementById('avatarZoom');
+            if (zoom) zoom.value = '1';
+            centerAvatarCrop(false);
+        }
+
+        function centerAvatarCrop(redraw = true) {
+            if (!avatarImage) return;
+            const { width, height } = getCanvasSize();
+            cropState.scale = cropState.minScale * cropState.zoom;
+            cropState.x = (width - avatarImage.naturalWidth * cropState.scale) / 2;
+            cropState.y = (height - avatarImage.naturalHeight * cropState.scale) / 2;
+            clampAvatarCrop();
+            updateZoomLabel();
+            if (redraw) drawAvatarCrop(); else drawAvatarCrop();
+        }
+
+        function setAvatarZoom(value) {
+            if (!avatarImage) return;
+            const { width, height } = getCanvasSize();
+            const oldScale = cropState.scale || cropState.minScale;
+            const centerSourceX = (width / 2 - cropState.x) / oldScale;
+            const centerSourceY = (height / 2 - cropState.y) / oldScale;
+
+            cropState.zoom = Math.max(1, Math.min(3, Number(value) || 1));
+            cropState.scale = cropState.minScale * cropState.zoom;
+            cropState.x = width / 2 - centerSourceX * cropState.scale;
+            cropState.y = height / 2 - centerSourceY * cropState.scale;
+            clampAvatarCrop();
+            updateZoomLabel();
+            drawAvatarCrop();
+        }
+
+        function updateZoomLabel() {
+            const label = document.getElementById('zoomValue');
+            if (label) label.textContent = `${Math.round((cropState.zoom || 1) * 100)}%`;
+        }
+
+        function clampAvatarCrop() {
+            if (!avatarImage) return;
+            const { width, height } = getCanvasSize();
+            const drawW = avatarImage.naturalWidth * cropState.scale;
+            const drawH = avatarImage.naturalHeight * cropState.scale;
+            cropState.x = drawW <= width ? (width - drawW) / 2 : Math.min(0, Math.max(width - drawW, cropState.x));
+            cropState.y = drawH <= height ? (height - drawH) / 2 : Math.min(0, Math.max(height - drawH, cropState.y));
+        }
+
+        function drawAvatarCrop() {
+            const canvas = document.getElementById('avatarCanvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#111114';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (!avatarImage) return;
+
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(
+                avatarImage,
+                cropState.x,
+                cropState.y,
+                avatarImage.naturalWidth * cropState.scale,
+                avatarImage.naturalHeight * cropState.scale,
+            );
+
+            // subtle rule-of-thirds guide
+            ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]);
+            for (const x of [canvas.width / 3, canvas.width * 2 / 3]) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+            }
+            for (const y of [canvas.height / 3, canvas.height * 2 / 3]) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+            }
+            ctx.setLineDash([]);
+        }
+
+        function getAvatarCropData() {
+            if (!avatarImage) return null;
+            const { width, height } = getCanvasSize();
+            const x = Math.max(0, -cropState.x / cropState.scale);
+            const y = Math.max(0, -cropState.y / cropState.scale);
+            const cropWidth = Math.min(avatarImage.naturalWidth - x, width / cropState.scale);
+            const cropHeight = Math.min(avatarImage.naturalHeight - y, height / cropState.scale);
+            return { x, y, width: cropWidth, height: cropHeight, outputWidth: avatarOutput.width, outputHeight: avatarOutput.height };
+        }
+
+        function buildCardFormData() {
+            readFieldsIntoCard();
+            const fd = new FormData();
+            fd.append('card', JSON.stringify(currentCard));
+            if (avatarFile) fd.append('avatar', avatarFile, avatarFile.name || 'avatar.png');
+            const crop = getAvatarCropData();
+            if (crop) fd.append('crop', JSON.stringify(crop));
+            return fd;
+        }
+
+        // ── Status helpers ───────────────────────────────────────────────────
+        function showStatus(msg, type = 'info') {
+            const el = document.getElementById('statusBar');
+            el.textContent = msg;
+            el.className = `status-bar visible ${type}`;
+        }
+        function hideStatus() { document.getElementById('statusBar').className = 'status-bar'; }
+
+        // ── Init ─────────────────────────────────────────────────────────────
+        (async () => {
+            initAvatarCropper();
+            await getCsrf();
+            try {
+                const r = await fetch('/api/ai-creator/status', { headers: headers() });
+                const d = await r.json();
+
+                currentProvider = d.provider;
+                currentModel = d.model;
+                currentProfileId = d.selectedProfileId || '';
+                defaultPrompt = d.defaultPrompt || '';
+                currentPromptVersion = d.promptVersion || 'legacy';
+                avatarOutput = { width: d.avatarWidth || 512, height: d.avatarHeight || 768 };
+                document.getElementById('cropSizeBadge').textContent = `${avatarOutput.width}×${avatarOutput.height}`;
+
+                // Connection badge
+                const badge = document.getElementById('connectionBadge');
+                if (d.hasApiKey) {
+                    badge.className = 'badge ok';
+                    badge.textContent = `✓ ${d.provider}`;
+                } else {
+                    badge.className = 'badge warn';
+                    badge.textContent = `⚠ ${d.provider} — no key`;
+                }
+
+                // Provider badge
+                document.getElementById('providerBadge').textContent = d.provider;
+
+                // Prompt. If the backend ships a newer default prompt, do not keep an old local override silently.
+                const saved = localStorage.getItem('ai-creator-prompt');
+                const savedVersion = localStorage.getItem('ai-creator-prompt-version');
+                const useSaved = saved && savedVersion === currentPromptVersion;
+                document.getElementById('systemPromptInput').value = useSaved ? saved : defaultPrompt;
+                if (!useSaved) {
+                    localStorage.removeItem('ai-creator-prompt');
+                    localStorage.setItem('ai-creator-prompt-version', currentPromptVersion);
+                }
+
+                // Load profiles first, then models for selected profile
+                renderProfiles(d.profiles || [], d.selectedProfileId || '');
+                await refreshModels();
+            } catch (e) {
+                document.getElementById('connectionBadge').className = 'badge warn';
+                document.getElementById('connectionBadge').textContent = 'Connection error';
+            }
+        })();
+
+        // ── Profiles & models ────────────────────────────────────────────────
+        function renderProfiles(profiles = [], selectedProfileId = '') {
+            const sel = document.getElementById('profileSelect');
+            if (!sel) return;
+            sel.innerHTML = '';
+
+            const currentOpt = document.createElement('option');
+            currentOpt.value = '';
+            currentOpt.textContent = 'Current AI Connection settings';
+            currentOpt.selected = !selectedProfileId;
+            sel.appendChild(currentOpt);
+
+            profiles.forEach(profile => {
+                const opt = document.createElement('option');
+                opt.value = profile.id;
+                opt.textContent = `${profile.name} (${profile.api}${profile.model ? ` · ${profile.model}` : ''})`;
+                opt.selected = profile.id === selectedProfileId;
+                sel.appendChild(opt);
+            });
+
+            currentProfileId = sel.value || '';
+        }
+
+        async function refreshProfiles() {
+            const sel = document.getElementById('profileSelect');
+            if (sel) sel.innerHTML = '<option value="">Loading profiles...</option>';
+            try {
+                const r = await fetch('/api/ai-creator/profiles', { headers: headers() });
+                const d = await r.json();
+                if (!r.ok || d.error) throw new Error(d.error || `Server error ${r.status}`);
+                renderProfiles(d.profiles || [], currentProfileId || d.selectedProfileId || '');
+                await refreshModels();
+            } catch (err) {
+                if (sel) sel.innerHTML = '<option value="">Profile load failed</option>';
+                showStatus(`Profile load failed: ${err.message}`, 'error');
+            }
+        }
+
+        function getSelectedProfileId() {
+            const sel = document.getElementById('profileSelect');
+            currentProfileId = sel?.value || '';
+            return currentProfileId;
+        }
+
+        async function handleProfileChange() {
+            getSelectedProfileId();
+            await refreshModels();
+        }
+
+        async function refreshModels() {
+            const sel = document.getElementById('modelSelect');
+            const profileId = getSelectedProfileId();
+            sel.innerHTML = '<option value="">Loading...</option>';
+
+            try {
+                const url = `/api/ai-creator/models${profileId ? `?profileId=${encodeURIComponent(profileId)}` : ''}`;
+                const r = await fetch(url, { headers: headers() });
+                const d = await r.json();
+
+                sel.innerHTML = '';
+                if (d.models && d.models.length > 0) {
+                    d.models.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m;
+                        opt.textContent = m;
+                        if (m === d.currentModel) opt.selected = true;
+                        sel.appendChild(opt);
+                    });
+                } else {
+                    // No models fetched — show current model as editable input
+                    const opt = document.createElement('option');
+                    opt.value = d.currentModel || '';
+                    opt.textContent = d.currentModel || '(no model)';
+                    opt.selected = true;
+                    sel.appendChild(opt);
+                }
+
+                // Always add a "custom" option
+                const customOpt = document.createElement('option');
+                customOpt.value = '__custom__';
+                customOpt.textContent = '✏️ Type custom model...';
+                sel.appendChild(customOpt);
+
+                currentModel = sel.value;
+                currentProvider = d.provider || currentProvider;
+                currentProfileId = d.profileId || profileId || '';
+                const providerBadge = document.getElementById('providerBadge');
+                providerBadge.textContent = d.profileName ? `${d.provider} · ${d.profileName}` : d.provider;
+                const connectionBadge = document.getElementById('connectionBadge');
+                connectionBadge.className = d.hasApiKey === false ? 'badge warn' : 'badge ok';
+                connectionBadge.textContent = d.hasApiKey === false ? `⚠ ${d.provider} — no key` : `✓ ${d.profileName || d.provider}`;
+            } catch {
+                sel.innerHTML = '<option value="">Failed to load models</option>';
+            }
+        }
+
+        function getSelectedModel() {
+            const sel = document.getElementById('modelSelect');
+            if (sel.value === '__custom__') {
+                const custom = prompt('Enter model name:');
+                if (custom) {
+                    const opt = document.createElement('option');
+                    opt.value = custom;
+                    opt.textContent = custom;
+                    opt.selected = true;
+                    sel.insertBefore(opt, sel.lastElementChild);
+                    currentModel = custom;
+                    return custom;
+                }
+                return currentModel;
+            }
+            currentModel = sel.value;
+            return sel.value;
+        }
+
+        function useStreaming() {
+            return document.getElementById('streamToggle')?.checked !== false;
+        }
+
+        async function testModel() {
+            const btn = document.getElementById('btnTestModel');
+            const model = getSelectedModel();
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Testing...';
+            showStatus(`Testing ${model || 'current model'} with a tiny “hi” request...`, 'info');
+
+            try {
+                const started = performance.now();
+                const r = await fetch('/api/ai-creator/test-model', {
+                    method: 'POST',
+                    headers: headers(),
+                    body: JSON.stringify({ model, profileId: getSelectedProfileId(), stream: useStreaming() }),
+                });
+                const d = await r.json();
+                if (!r.ok || d.error) throw new Error(d.error || `Server error ${r.status}`);
+                const uiMs = Math.round(performance.now() - started);
+                showStatus(`✅ Model OK: ${d.reply || '(empty)'} — ${d.profileName || d.provider}/${d.model} — server ${d.ms}ms / UI ${uiMs}ms / stream=${d.stream}`, 'success');
+            } catch (err) {
+                showStatus(`❌ Model test failed: ${err.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🧪 Test Model';
+            }
+        }
+
+        // ── Debug log ────────────────────────────────────────────────────────
+        function useDebug() {
+            return document.getElementById('debugToggle')?.checked === true;
+        }
+        function toggleDebugPanel(show) {
+            document.getElementById('debugPanel').classList.toggle('visible', !!show);
+        }
+        function clearDebugLog() {
+            document.getElementById('debugLog').innerHTML = '';
+            const live = document.getElementById('debugLive');
+            if (live) live.textContent = 'Idle. Start generation to see request/stream progress.';
+        }
+        function debugElapsed(ms) {
+            return `${Math.floor(ms / 1000)}s`;
+        }
+        function setDebugLive(extra = '') {
+            const live = document.getElementById('debugLive');
+            if (!live || !debugRun) return;
+            const now = performance.now();
+            const elapsed = debugElapsed(now - debugRun.started);
+            const serverAgo = debugRun.lastServerEvent ? debugElapsed(now - debugRun.lastServerEvent) : 'never';
+            live.textContent = [
+                `elapsed=${elapsed} | phase=${debugRun.phase}`,
+                `server_last_event=${serverAgo} ago | chunks=${debugRun.chunks} | chars=${debugRun.chars}`,
+                debugRun.firstToken ? 'first_token=yes' : 'first_token=no',
+                extra,
+            ].filter(Boolean).join('\n');
+        }
+        function startDebugHeartbeat() {
+            stopDebugHeartbeat(false);
+            debugRun = {
+                started: performance.now(),
+                lastServerEvent: null,
+                phase: 'client_preparing_request',
+                chunks: 0,
+                chars: 0,
+                firstByte: false,
+                firstToken: false,
+                heartbeat: null,
+            };
+            setDebugLive('Preparing fetch request...');
+            debugRun.heartbeat = setInterval(() => {
+                if (!debugRun) return;
+                const elapsed = performance.now() - debugRun.started;
+                setDebugLive('Live status updates here; log below only shows meaningful milestones.');
+                showStatus(`Debug live: ${debugRun.phase} — ${debugElapsed(elapsed)} — ${debugRun.chars} chars / ${debugRun.chunks} chunks`, 'info');
+            }, 1000);
+        }
+        function stopDebugHeartbeat(resetLive = true) {
+            if (debugRun?.heartbeat) clearInterval(debugRun.heartbeat);
+            if (resetLive && debugRun) setDebugLive('Debug run completed.');
+            if (debugRun) debugRun.heartbeat = null;
+        }
+        function noteDebugServerEvent(ev) {
+            if (!debugRun) return;
+            debugRun.lastServerEvent = performance.now();
+            if (ev.type === 'request') debugRun.phase = 'request_sent_waiting_upstream';
+            if (ev.type === 'heartbeat') debugRun.phase = ev.phase || debugRun.phase;
+            if (ev.type === 'upstream_status') debugRun.phase = 'upstream_headers_received';
+            if (ev.type === 'stream_open') debugRun.phase = 'stream_open_waiting_first_token';
+            if (ev.type === 'first_token') { debugRun.phase = 'first_token_received'; debugRun.firstToken = true; }
+            if (ev.type === 'token') { debugRun.phase = 'streaming_tokens'; debugRun.chunks = ev.chunks || debugRun.chunks; debugRun.chars = ev.chars || debugRun.chars; }
+            if (ev.type === 'stream_done') { debugRun.phase = 'stream_done'; debugRun.chunks = ev.chunks || debugRun.chunks; debugRun.chars = ev.chars || debugRun.chars; }
+            if (ev.type === 'raw_complete') { debugRun.phase = 'raw_complete_parse_next'; debugRun.chars = ev.chars || debugRun.chars; }
+            if (ev.type === 'parse_ok') debugRun.phase = 'parse_ok';
+            if (ev.type === 'parse_error') debugRun.phase = 'parse_error';
+            if (ev.type === 'done') debugRun.phase = ev.success ? 'done_success' : 'done_failed';
+            if (ev.type === 'error' || ev.type === 'upstream_error') debugRun.phase = 'error';
+            setDebugLive();
+        }
+        function debugLog(message, cls = '') {
+            const log = document.getElementById('debugLog');
+            if (!log) return;
+            const time = new Date().toLocaleTimeString();
+            const line = document.createElement('div');
+            if (cls) line.className = cls;
+            line.textContent = `[${time}] ${message}`;
+            log.appendChild(line);
+            log.scrollTop = log.scrollHeight;
+        }
+        function formatDebugEvent(ev) {
+            switch (ev.type) {
+                case 'start': return `start: ${ev.message || ''}`;
+                case 'prompt_ready': return `prompt ready: system=${ev.systemChars} chars, user=${ev.userChars} chars`;
+                case 'provider': return `provider: ${ev.provider}, model=${ev.model}, stream=${ev.stream}`;
+                case 'request': return `request: ${ev.endpoint} | model=${ev.model} | stream=${ev.stream} | max=${ev.maxTokens}`;
+                case 'upstream_status': return `upstream status: ${ev.status} ok=${ev.ok} after ${ev.ms}ms`;
+                case 'stream_open': return ev.message || 'stream opened';
+                case 'heartbeat': return `heartbeat: phase=${ev.phase}, beat=${ev.beat}, elapsed=${ev.ms}ms, chunks=${ev.chunks ?? 0}, chars=${ev.chars ?? 0} — ${ev.message || ''}`;
+                case 'first_token': return `FIRST TOKEN after ${ev.ms}ms, chars=${ev.chars}, delta=${JSON.stringify(ev.delta || '')}`;
+                case 'token': return `token progress: chunk #${ev.chunks}, total=${ev.chars} chars, latest=${JSON.stringify(ev.delta || '')}`;
+                case 'stream_done': return `stream done: ${ev.chunks} chunks, ${ev.chars} chars`;
+                case 'raw_complete': return `raw complete: ${ev.chars} chars, preview=${JSON.stringify((ev.preview || '').slice(0, 200))}`;
+                case 'parse_ok': return `parse OK: ${ev.name}, tags=${JSON.stringify(ev.tags || [])}, total ${ev.ms}ms`;
+                case 'parse_error': return `parse ERROR: ${ev.message}\nraw preview: ${(ev.rawPreview || '').slice(0, 1200)}`;
+                case 'done': return ev.success ? `done: success in ${ev.ms}ms` : `done: FAILED in ${ev.ms}ms — ${ev.error}`;
+                case 'error': return `ERROR: ${ev.message}`;
+                default: return `${ev.type}: ${JSON.stringify(ev)}`;
+            }
+        }
+        function debugClass(ev) {
+            if (['parse_ok', 'done'].includes(ev.type) && ev.success !== false) return 'ok';
+            if (['parse_error', 'error', 'upstream_error'].includes(ev.type) || ev.success === false) return 'err';
+            if (ev.type === 'token' || ev.type === 'first_token') return 'token';
+            if (['note', 'stream_end_without_done', 'heartbeat'].includes(ev.type)) return 'warn';
+            return '';
+        }
+
+        // ── Prompt toggle ────────────────────────────────────────────────────
+        function togglePrompt() {
+            const toggle = document.getElementById('promptToggle');
+            const editor = document.getElementById('promptEditor');
+            toggle.classList.toggle('open');
+            editor.classList.toggle('open');
+        }
+        function resetPrompt() {
+            document.getElementById('systemPromptInput').value = defaultPrompt;
+            localStorage.removeItem('ai-creator-prompt');
+            localStorage.setItem('ai-creator-prompt-version', currentPromptVersion);
+        }
+        function getSystemPrompt() {
+            const val = document.getElementById('systemPromptInput').value.trim();
+            localStorage.setItem('ai-creator-prompt', val);
+            localStorage.setItem('ai-creator-prompt-version', currentPromptVersion);
+            return val || defaultPrompt;
+        }
+
+        // ── Generate ─────────────────────────────────────────────────────────
+        async function generateCard() {
+            const desc = document.getElementById('charDescription').value.trim();
+            if (desc.length < 10) {
+                showStatus('Please describe your character (at least 10 characters).', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('btnGenerate');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Generating...';
+            showStatus('Calling AI — this may take 15-90 seconds...', 'info');
+
+            try {
+                const body = {
+                    description: desc,
+                    model: getSelectedModel(),
+                    profileId: getSelectedProfileId(),
+                    systemPrompt: getSystemPrompt(),
+                    stream: useStreaming(),
+                };
+                const style = document.getElementById('styleHint').value.trim();
+                if (style) body.style = style;
+
+                if (useDebug()) {
+                    await generateCardDebug(body);
+                    return;
+                }
+
+                const r = await fetch('/api/ai-creator/generate', {
+                    method: 'POST', headers: headers(), body: JSON.stringify(body),
+                });
+                const data = await r.json();
+                if (!r.ok || data.error) throw new Error(data.error || `Server error ${r.status}`);
+
+                currentCard = data.card;
+                renderCard(currentCard);
+                showStatus(`✅ Generated "${currentCard.name}"!`, 'success');
+            } catch (err) {
+                showStatus(`Error: ${err.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🪄 Generate Character';
+            }
+        }
+
+        async function generateCardDebug(body) {
+            toggleDebugPanel(true);
+            clearDebugLog();
+            startDebugHeartbeat();
+            debugLog('client: debug generation request started');
+            debugLog(`client: POST /api/ai-creator/generate-debug | stream=${body.stream} | profile=${body.profileId || '(current)'} | model=${body.model || '(profile default)'}`);
+
+            let finalEvent = null;
+            try {
+                debugRun.phase = 'fetch_waiting_headers';
+                setDebugLive('fetch() called; waiting for response headers...');
+
+                const r = await fetch('/api/ai-creator/generate-debug', {
+                    method: 'POST',
+                    headers: headers(),
+                    body: JSON.stringify(body),
+                });
+
+                debugRun.phase = 'headers_received_reading_body';
+                noteDebugServerEvent({ type: 'client_headers_received' });
+                debugLog(`client: response headers received, status=${r.status}, content-type=${r.headers.get('content-type') || '(none)'}`, r.ok ? 'ok' : 'err');
+
+                if (!r.ok) {
+                    const text = await r.text();
+                    throw new Error(text || `Debug endpoint error ${r.status}`);
+                }
+                if (!r.body) throw new Error('Browser did not expose a readable response body for debug stream.');
+
+                const reader = r.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let bytes = 0;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    bytes += value?.byteLength || 0;
+                    if (!debugRun.firstByte) {
+                        debugRun.firstByte = true;
+                        debugRun.phase = 'first_response_bytes_received';
+                        debugLog(`client: FIRST RESPONSE BYTES received (${bytes} bytes). NDJSON stream is alive.`, 'ok');
+                    }
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split(/\r?\n/);
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        let ev;
+                        try { ev = JSON.parse(line); }
+                        catch { debugLog(`bad debug line: ${line.slice(0, 300)}`, 'warn'); continue; }
+
+                        noteDebugServerEvent(ev);
+                        if (ev.type === 'heartbeat') continue; // heartbeat updates live status only; never spam the log
+                        debugLog(formatDebugEvent(ev), debugClass(ev));
+                        if (ev.type === 'done') finalEvent = ev;
+                        if (ev.type === 'first_token') showStatus(`First token received after ${ev.ms}ms`, 'info');
+                        if (ev.type === 'token') showStatus(`Streaming... ${ev.chars} chars received (${ev.chunks} chunks)`, 'info');
+                    }
+                }
+
+                debugLog('client: response stream closed');
+                if (!finalEvent) throw new Error('Debug stream ended without final result.');
+                if (!finalEvent.success) throw new Error(finalEvent.error || 'Generation failed. See debug log for raw response.');
+
+                currentCard = finalEvent.card;
+                renderCard(currentCard);
+                showStatus(`✅ Generated "${currentCard.name}"!`, 'success');
+            } finally {
+                stopDebugHeartbeat(true);
+            }
+        }
+
+        // ── Refine ───────────────────────────────────────────────────────────
+        function toggleRefine() {
+            document.getElementById('refineRow').classList.toggle('visible');
+        }
+        async function refineCard() {
+            const instruction = document.getElementById('refineInstruction').value.trim();
+            if (!instruction || !currentCard) return;
+
+            readFieldsIntoCard();
+            showStatus('Refining with AI...', 'info');
+
+            try {
+                const r = await fetch('/api/ai-creator/refine', {
+                    method: 'POST', headers: headers(),
+                    body: JSON.stringify({
+                        card: currentCard, instruction,
+                        model: getSelectedModel(),
+                        profileId: getSelectedProfileId(),
+                        systemPrompt: getSystemPrompt(),
+                        stream: useStreaming(),
+                    }),
+                });
+                const data = await r.json();
+                if (!r.ok || data.error) throw new Error(data.error);
+
+                currentCard = data.card;
+                renderCard(currentCard);
+                document.getElementById('refineInstruction').value = '';
+                showStatus(`✅ Refined "${currentCard.name}"!`, 'success');
+            } catch (err) {
+                showStatus(`Refine error: ${err.message}`, 'error');
+            }
+        }
+
+        // ── Character spine + quality audit ──────────────────────────────────
+        const spineLabels = {
+            core_identity: 'Core identity',
+            desire: 'Desire / goal',
+            fear_or_wound: 'Fear or wound',
+            flaw: 'Playable flaw',
+            secret_or_tension: 'Secret / tension',
+            relationship_to_user: '{{user}} relationship',
+            conflict_engine: 'Conflict engine',
+            voice_profile: 'Voice profile',
+        };
+
+        function normalizeSpine(spine) {
+            const source = spine && typeof spine === 'object' ? spine : {};
+            return Object.keys(spineLabels).reduce((out, key) => {
+                out[key] = String(source[key] || '').trim();
+                return out;
+            }, {});
+        }
+
+        function renderSpine(spine) {
+            const container = document.getElementById('spineGrid');
+            if (!container) return;
+            container.innerHTML = '';
+            const normalized = normalizeSpine(spine);
+            Object.entries(spineLabels).forEach(([key, label]) => {
+                const item = document.createElement('div');
+                item.className = 'spine-item';
+                const labelEl = document.createElement('div');
+                labelEl.className = 'spine-label';
+                labelEl.textContent = label;
+                const textEl = document.createElement('div');
+                textEl.className = 'spine-text';
+                textEl.textContent = normalized[key] || '(missing)';
+                item.append(labelEl, textEl);
+                container.appendChild(item);
+            });
+        }
+
+        function renderQualityAudit(audit) {
+            const container = document.getElementById('qualityAudit');
+            if (!container) return;
+            if (!audit || !Array.isArray(audit.checks)) {
+                container.innerHTML = '<p class="hint">No audit yet. Generate or click Re-check after edits.</p>';
+                return;
+            }
+
+            const status = String(audit.status || 'needs-work');
+            const score = Number.isFinite(Number(audit.score)) ? Number(audit.score) : 0;
+            const summary = audit.summary || `${score}/100 (${status})`;
+            container.innerHTML = '';
+
+            const summaryRow = document.createElement('div');
+            summaryRow.className = 'audit-summary';
+            const scoreEl = document.createElement('span');
+            scoreEl.className = `audit-score ${status}`;
+            scoreEl.textContent = `${score}/100 · ${status}`;
+            const textEl = document.createElement('span');
+            textEl.className = 'hint';
+            textEl.textContent = summary;
+            summaryRow.append(scoreEl, textEl);
+            container.appendChild(summaryRow);
+
+            const list = document.createElement('div');
+            list.className = 'audit-list';
+            audit.checks.forEach(check => {
+                const row = document.createElement('div');
+                row.className = `audit-check ${check.pass ? 'pass' : 'fail'} ${check.severity || 'warn'}`;
+                const icon = document.createElement('div');
+                icon.className = 'audit-icon';
+                icon.textContent = check.pass ? '✓' : '!';
+                const title = document.createElement('div');
+                title.textContent = check.label || check.id || 'Check';
+                const detail = document.createElement('div');
+                detail.className = 'audit-detail';
+                detail.textContent = check.detail || '';
+                row.append(icon, title, detail);
+                list.appendChild(row);
+            });
+            container.appendChild(list);
+        }
+
+        async function auditCurrentCard() {
+            if (!currentCard) return;
+            readFieldsIntoCard();
+            showStatus('Re-checking character quality...', 'info');
+            try {
+                const r = await fetch('/api/ai-creator/audit', {
+                    method: 'POST',
+                    headers: headers(),
+                    body: JSON.stringify({ card: currentCard }),
+                });
+                const data = await r.json();
+                if (!r.ok || data.error) throw new Error(data.error || `Server error ${r.status}`);
+                currentCard.quality_audit = data.audit;
+                renderQualityAudit(data.audit);
+                showStatus(`Quality audit: ${data.audit.score}/100 (${data.audit.status})`, data.audit.score >= 70 ? 'success' : 'info');
+            } catch (err) {
+                showStatus(`Audit error: ${err.message}`, 'error');
+            }
+        }
+
+        function renderProbeResults(probeData) {
+            const container = document.getElementById('probeResults');
+            if (!container) return;
+            if (!probeData || !Array.isArray(probeData.results)) {
+                container.innerHTML = '<p class="hint">Run probes after generation to test whether {{char}} keeps voice, agency, and secrets under pressure.</p>';
+                return;
+            }
+            container.innerHTML = '';
+            const summary = document.createElement('div');
+            summary.className = 'audit-summary';
+            const score = document.createElement('span');
+            score.className = `audit-score ${probeData.passed === probeData.total ? 'strong' : probeData.passed >= 2 ? 'good' : 'needs-work'}`;
+            score.textContent = probeData.summary || `${probeData.passed}/${probeData.total} probes passed`;
+            const hint = document.createElement('span');
+            hint.className = 'hint';
+            hint.textContent = 'Review replies for voice, agency, and pressure behavior.';
+            summary.append(score, hint);
+            container.appendChild(summary);
+
+            const list = document.createElement('div');
+            list.className = 'probe-list';
+            probeData.results.forEach(result => {
+                const item = document.createElement('div');
+                const pass = result.assessment?.pass;
+                item.className = `probe-item ${pass ? 'pass' : 'fail'}`;
+
+                const title = document.createElement('div');
+                title.className = 'probe-title';
+                const left = document.createElement('span');
+                left.textContent = `${pass ? '✓' : '!'} ${result.label || result.id}`;
+                const meta = document.createElement('span');
+                meta.className = 'hint';
+                meta.textContent = `${result.assessment?.words || 0} words`;
+                title.append(left, meta);
+
+                const goal = document.createElement('div');
+                goal.className = 'hint';
+                goal.textContent = result.goal || '';
+                const user = document.createElement('div');
+                user.className = 'hint';
+                user.textContent = `Probe: ${result.user_message || ''}`;
+                const reply = document.createElement('div');
+                reply.className = 'probe-reply';
+                reply.textContent = result.reply || '(empty)';
+                item.append(title, goal, user, reply);
+
+                const flags = result.assessment?.flags || [];
+                if (flags.length) {
+                    const flagEl = document.createElement('div');
+                    flagEl.className = 'probe-flags';
+                    flagEl.textContent = `Flags: ${flags.join(', ')}`;
+                    item.appendChild(flagEl);
+                }
+                list.appendChild(item);
+            });
+            container.appendChild(list);
+        }
+
+        async function runRpProbes() {
+            if (!currentCard) return;
+            readFieldsIntoCard();
+            const btn = document.getElementById('btnRunProbes');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Probing...'; }
+            showStatus('Running 3 RP probes against the selected model...', 'info');
+            try {
+                const r = await fetch('/api/ai-creator/probe', {
+                    method: 'POST',
+                    headers: headers(),
+                    body: JSON.stringify({ card: currentCard, model: getSelectedModel(), profileId: getSelectedProfileId(), stream: useStreaming() }),
+                });
+                const data = await r.json();
+                if (!r.ok || data.error) throw new Error(data.error || `Server error ${r.status}`);
+                currentCard.rp_probes = data;
+                renderProbeResults(data);
+                showStatus(`RP probes: ${data.summary}`, data.passed >= 2 ? 'success' : 'info');
+            } catch (err) {
+                showStatus(`Probe error: ${err.message}`, 'error');
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = '🧪 Run RP Probes'; }
+            }
+        }
+
+        // ── Render card into UI ──────────────────────────────────────────────
+        function renderCard(card) {
+            const el = document.getElementById('charCard');
+            el.classList.add('visible');
+
+            // Header
+            document.getElementById('cardNameDisplay').textContent = card.name || 'Untitled';
+
+            // Tags in header + editable tag section
+            tags = normalizeTagList(card.tags ?? card.data?.tags);
+            renderTagsInput();
+
+            // Generated RP spine + deterministic quality audit
+            renderSpine(card.character_spine ?? card.data?.extensions?.ai_creator?.character_spine);
+            renderQualityAudit(card.quality_audit ?? card.data?.extensions?.ai_creator?.quality_audit);
+            renderProbeResults(card.rp_probes);
+
+            // Greetings
+            greetings = Array.isArray(card.alternate_greetings) ? [...card.alternate_greetings] : [];
+            renderGreetings();
+
+            // Fill all fields
+            const fields = ['name', 'description', 'personality', 'scenario', 'first_mes',
+                            'mes_example', 'system_prompt', 'post_history_instructions',
+                            'creator_notes', 'character_version'];
+            fields.forEach(f => {
+                const input = document.getElementById(`field_${f}`);
+                if (input) input.value = card[f] || '';
+
+                // Update preview
+                const preview = document.getElementById(`preview_${f}`);
+                if (preview) preview.textContent = card[f] || '(empty)';
+            });
+
+            // Open description and greeting panels by default
+            document.querySelectorAll('.field-panel[data-open="true"] .field-panel-header').forEach(h => {
+                if (!h.classList.contains('open')) togglePanel(h);
+            });
+
+            // Scroll to card
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function renderHeaderTags() {
+            const container = document.getElementById('cardTagsDisplay');
+            container.innerHTML = '';
+            tags.forEach(t => {
+                const chip = document.createElement('span');
+                chip.className = 'tag-chip';
+                chip.textContent = t;
+                container.appendChild(chip);
+            });
+        }
+
+        // ── Collapsible panels ───────────────────────────────────────────────
+        function togglePanel(header) {
+            header.classList.toggle('open');
+            const body = header.nextElementSibling;
+            body.classList.toggle('open');
+        }
+
+        // ── Toggle edit mode for a field ─────────────────────────────────────
+        function toggleEdit(field) {
+            const preview = document.getElementById(`preview_${field}`);
+            const textarea = document.getElementById(`field_${field}`);
+            if (!preview || !textarea) return;
+
+            const isEditing = textarea.style.display !== 'none';
+            if (isEditing) {
+                // Save: update preview
+                preview.textContent = textarea.value || '(empty)';
+                preview.style.display = '';
+                textarea.style.display = 'none';
+            } else {
+                // Edit: show textarea
+                preview.style.display = 'none';
+                textarea.style.display = '';
+                textarea.focus();
+            }
+        }
+
+        function updateCardHeader() {
+            document.getElementById('cardNameDisplay').textContent =
+                document.getElementById('field_name').value || 'Untitled';
+        }
+
+        // ── Tags ─────────────────────────────────────────────────────────────
+        function normalizeTagList(value) {
+            if (Array.isArray(value)) return value.map(t => String(t).trim()).filter(Boolean);
+            if (typeof value === 'string') return value.split(',').map(t => t.trim()).filter(Boolean);
+            return [];
+        }
+
+        function renderTagsInput() {
+            const container = document.getElementById('tagsContainer');
+            container.querySelectorAll('.tag-chip').forEach(c => c.remove());
+            const input = document.getElementById('tagInput');
+            tags.forEach((t, i) => {
+                const chip = document.createElement('span');
+                chip.className = 'tag-chip';
+                chip.innerHTML = `${esc(t)} <span class="remove" onclick="removeTag(${i})">×</span>`;
+                container.insertBefore(chip, input);
+            });
+            renderHeaderTags();
+        }
+        function handleTagKey(e) {
+            if (e.key === 'Enter' || e.key === ',') {
+                e.preventDefault();
+                const v = e.target.value.trim().replace(/,/g, '');
+                if (v && !tags.includes(v)) { tags.push(v); renderTagsInput(); }
+                e.target.value = '';
+            }
+        }
+        function removeTag(i) { tags.splice(i, 1); renderTagsInput(); }
+
+        // ── Greetings ────────────────────────────────────────────────────────
+        function renderGreetings() {
+            const list = document.getElementById('greetingsList');
+            list.innerHTML = '';
+            greetings.forEach((g, i) => {
+                const item = document.createElement('div');
+                item.className = 'greeting-item';
+                item.innerHTML = `<textarea onchange="greetings[${i}]=this.value">${esc(g)}</textarea>
+                    <button class="btn btn-ghost btn-sm" onclick="removeGreeting(${i})">✕</button>`;
+                list.appendChild(item);
+            });
+        }
+        function addGreeting() { greetings.push(''); renderGreetings(); }
+        function removeGreeting(i) { greetings.splice(i, 1); renderGreetings(); }
+
+        // ── Read fields back ─────────────────────────────────────────────────
+        function readFieldsIntoCard() {
+            if (!currentCard) return;
+            ['name', 'description', 'personality', 'scenario', 'first_mes',
+             'mes_example', 'system_prompt', 'post_history_instructions',
+             'creator_notes', 'character_version'].forEach(f => {
+                const el = document.getElementById(`field_${f}`);
+                if (el) currentCard[f] = el.value;
+            });
+            currentCard.tags = [...tags];
+            const textareas = document.querySelectorAll('#greetingsList textarea');
+            currentCard.alternate_greetings = Array.from(textareas).map(t => t.value);
+        }
+
+        // ── Download JSON ────────────────────────────────────────────────────
+        function downloadJSON() {
+            readFieldsIntoCard();
+            const json = JSON.stringify(currentCard, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${(currentCard.name || 'character').replace(/[^a-zA-Z0-9_-]/g, '_')}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showStatus('📥 JSON downloaded!', 'success');
+        }
+
+        async function downloadPNG() {
+            if (!currentCard) return;
+            showStatus('Building PNG card...', 'info');
+
+            try {
+                const r = await fetch('/api/ai-creator/export-png', {
+                    method: 'POST',
+                    headers: formHeaders(),
+                    body: buildCardFormData(),
+                });
+                if (!r.ok) {
+                    let message = `Error ${r.status}`;
+                    try { message = (await r.json()).error || message; } catch {}
+                    throw new Error(message);
+                }
+
+                const blob = await r.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${(currentCard.name || 'character').replace(/[^a-zA-Z0-9_-]/g, '_')}.png`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showStatus('🖼️ PNG card downloaded!', 'success');
+            } catch (err) {
+                showStatus(`Download PNG error: ${err.message}`, 'error');
+            }
+        }
+
+        // ── Import ───────────────────────────────────────────────────────────
+        async function importToSillyTavern() {
+            if (!currentCard) return;
+            showStatus('Importing PNG card to SillyTavern...', 'info');
+
+            try {
+                const r = await fetch('/api/ai-creator/import-png', {
+                    method: 'POST',
+                    headers: formHeaders(),
+                    body: buildCardFormData(),
+                });
+                const data = await r.json();
+                if (!r.ok || data.error) throw new Error(data.error || `Error ${r.status}`);
+
+                showStatus(`✅ Imported PNG! "${data.avatar}" — refresh SillyTavern to see it.`, 'success');
+            } catch (err) {
+                showStatus(`Import error: ${err.message}`, 'error');
+            }
+        }
+
+        // ── Utils ────────────────────────────────────────────────────────────
+        function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    </script>
+</body>
+</html>
