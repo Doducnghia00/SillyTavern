@@ -750,6 +750,11 @@ export async function forwardFetchResponse(from, to) {
             console.info('Streaming request finished');
             to.end();
         });
+
+        from.body.on('error', function (err) {
+            console.error('Streaming request error:', err.message || err);
+            to.end();
+        });
     } else {
         to.end();
     }

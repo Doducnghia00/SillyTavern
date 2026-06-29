@@ -1739,6 +1739,161 @@ export async function sendTextareaMessage() {
     return generation;
 }
 
+let mobileSendQueueCount = 0;
+let mobileSendQueueRunning = false;
+let mobileSendQueueStopped = false;
+const mobileSendQueuePositionStorageKey = 'mobile_continue_queue_send_position';
+
+function updateMobileSendQueueButton() {
+    const button = $('#mobile_continue_queue_send');
+    if (!button.length) {
+        return;
+    }
+
+    const label = mobileSendQueueCount > 0 ? `×${mobileSendQueueCount}` : '';
+    button.find('.mobile_continue_queue_label').text(label);
+    button.toggleClass('queue-active', mobileSendQueueRunning || mobileSendQueueCount > 0);
+}
+
+async function runMobileSendQueue() {
+    if (mobileSendQueueRunning) {
+        return;
+    }
+
+    mobileSendQueueRunning = true;
+    mobileSendQueueStopped = false;
+    updateMobileSendQueueButton();
+
+    try {
+        while (mobileSendQueueCount > 0 && !mobileSendQueueStopped) {
+            mobileSendQueueCount--;
+            updateMobileSendQueueButton();
+
+            const previousChatLength = chat.length;
+            $('#send_textarea').val('')[0]?.dispatchEvent(new Event('input', { bubbles: true }));
+            await sendTextareaMessage();
+
+            const lastMessage = chat[chat.length - 1];
+            const succeeded = chat.length > previousChatLength && lastMessage && !lastMessage.is_user && String(lastMessage.mes || '').trim().length > 0;
+            if (!succeeded || mobileSendQueueStopped) {
+                mobileSendQueueCount = 0;
+                break;
+            }
+        }
+    } catch (error) {
+        console.warn('Mobile continue queue stopped after a failed send.', error);
+        mobileSendQueueCount = 0;
+    } finally {
+        mobileSendQueueRunning = false;
+        updateMobileSendQueueButton();
+    }
+}
+
+function waitForCurrentGenerationToFinish() {
+    return new Promise(resolve => {
+        const interval = setInterval(() => {
+            if (!$('#mes_stop').is(':visible') || mobileSendQueueStopped) {
+                clearInterval(interval);
+                resolve();
+            }
+        }, 250);
+    });
+}
+
+function initMobileSendQueueButton() {
+    // Always create the DOM node; CSS media queries keep it hidden off-phone.
+    // Some mobile browsers / in-app WebViews don't parse UA as mobile reliably.
+    if ($('#mobile_continue_queue_send').length) {
+        return;
+    }
+
+    const button = $(document.createElement('button'));
+    button.attr({
+        id: 'mobile_continue_queue_send',
+        type: 'button',
+        title: 'Queue empty send_if_empty message',
+        'aria-label': 'Queue empty message send',
+    });
+    button.append('<span class="fa-solid fa-forward-step mobile_continue_queue_icon"></span><span class="mobile_continue_queue_label"></span>');
+
+    const clampPosition = (position) => {
+        const size = button[0].getBoundingClientRect();
+        const maxX = Math.max(0, window.innerWidth - size.width - 8);
+        const maxY = Math.max(0, window.innerHeight - size.height - 8);
+        return {
+            x: Math.max(8, Math.min(maxX, Number(position?.x) || 12)),
+            y: Math.max(8, Math.min(maxY, Number(position?.y) || Math.max(80, window.innerHeight - 360))),
+        };
+    };
+    let savedPosition = null;
+    try {
+        savedPosition = JSON.parse(localStorage.getItem(mobileSendQueuePositionStorageKey) || 'null');
+    } catch {
+        savedPosition = null;
+    }
+    let dragCurrentPosition = clampPosition(savedPosition || {});
+    let dragStartPointer = { x: 0, y: 0 };
+    let dragStartPosition = { ...dragCurrentPosition };
+    let didDrag = false;
+    button.css({ left: `${dragCurrentPosition.x}px`, top: `${dragCurrentPosition.y}px` });
+
+    button.on('pointerdown', event => {
+        dragStartPointer = { x: event.clientX, y: event.clientY };
+        dragStartPosition = { ...dragCurrentPosition };
+        didDrag = false;
+        button[0].setPointerCapture?.(event.pointerId);
+    });
+    button.on('pointermove', event => {
+        if (!button[0].hasPointerCapture?.(event.pointerId)) {
+            return;
+        }
+
+        const deltaX = event.clientX - dragStartPointer.x;
+        const deltaY = event.clientY - dragStartPointer.y;
+        if (Math.hypot(deltaX, deltaY) > 4) {
+            didDrag = true;
+        }
+
+        dragCurrentPosition = clampPosition({
+            x: dragStartPosition.x + deltaX,
+            y: dragStartPosition.y + deltaY,
+        });
+        button.css({ left: `${dragCurrentPosition.x}px`, top: `${dragCurrentPosition.y}px` });
+    });
+    button.on('pointerup pointercancel', event => {
+        if (button[0].hasPointerCapture?.(event.pointerId)) {
+            button[0].releasePointerCapture?.(event.pointerId);
+        }
+        localStorage.setItem(mobileSendQueuePositionStorageKey, JSON.stringify({
+            x: Math.round(dragCurrentPosition.x),
+            y: Math.round(dragCurrentPosition.y),
+        }));
+    });
+    button.on('click', async event => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (didDrag) {
+            didDrag = false;
+            return;
+        }
+
+        if ($('#mes_stop').is(':visible')) {
+            mobileSendQueueCount++;
+            updateMobileSendQueueButton();
+            await waitForCurrentGenerationToFinish();
+            await runMobileSendQueue();
+            return;
+        }
+
+        mobileSendQueueCount++;
+        updateMobileSendQueueButton();
+        await runMobileSendQueue();
+    });
+
+    $('#form_sheld').append(button);
+}
+
 /**
  * Formats the message text into an HTML string using Markdown and other formatting.
  * @param {string} mes Message text
@@ -3577,7 +3732,9 @@ class StreamingProcessor {
             this.markUIGenStarted();
         }
         hideSwipeButtons({ hideCounters: true });
-        scrollChatToBottom({ waitForFrame: true });
+        if (!scrollLock) {
+            scrollChatToBottom({ waitForFrame: true });
+        }
         return messageId;
     }
 
@@ -5547,6 +5704,10 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
  */
 export function stopGeneration() {
     let stopped = false;
+    mobileSendQueueStopped = true;
+    mobileSendQueueCount = 0;
+    updateMobileSendQueueButton();
+
     if (streamingProcessor) {
         streamingProcessor.onStopStreaming();
         stopped = true;
@@ -11039,6 +11200,8 @@ function initCharacterSearch() {
 
 // MARK: DOM Handlers Start
 jQuery(async function () {
+    initMobileSendQueueButton();
+
     setTimeout(function () {
         $('#groupControlsToggle').trigger('click');
         $('#groupCurrentMemberListToggle .inline-drawer-icon').trigger('click');
@@ -11170,7 +11333,7 @@ jQuery(async function () {
             return;
         }
 
-        const scrollIsAtBottom = Math.abs(chatElementScroll.scrollHeight - chatElementScroll.clientHeight - chatElementScroll.scrollTop) < 5;
+        const scrollIsAtBottom = Math.abs(chatElementScroll.scrollHeight - chatElementScroll.clientHeight - chatElementScroll.scrollTop) < 32;
 
         // Resume autoscroll if the user scrolls to the bottom
         if (scrollLock && scrollIsAtBottom) {

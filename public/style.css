@@ -879,6 +879,7 @@ body .panelControlBar {
     width: 100%;
     margin: 1px auto 0 auto;
     z-index: 30;
+    position: relative;
 }
 
 /* special case for desktop Safari to allow #sheld resizing */
@@ -976,6 +977,57 @@ body .panelControlBar {
     opacity: 0.7;
 }
 
+#mobile_continue_queue_send {
+    position: fixed;
+    left: 12px;
+    top: calc(100dvh - 360px);
+    z-index: 3005;
+    width: var(--bottomFormBlockSize);
+    height: var(--bottomFormBlockSize);
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--black50a);
+    color: var(--SmartThemeBodyColor);
+    font-size: var(--bottomFormIconSize);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.72;
+    touch-action: none;
+    user-select: none;
+    backdrop-filter: blur(var(--SmartThemeBlurStrength));
+}
+
+#mobile_continue_queue_send.queue-active {
+    opacity: 0.95;
+}
+
+#mobile_continue_queue_send .mobile_continue_queue_label {
+    position: absolute;
+    right: -5px;
+    top: -7px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--SmartThemeEmColor);
+    color: var(--SmartThemeBodyColor);
+    font-size: 11px;
+    line-height: 18px;
+    font-weight: 700;
+    text-align: center;
+}
+
+#mobile_continue_queue_send .mobile_continue_queue_label:empty {
+    display: none;
+}
+
+@media (hover: hover) and (pointer: fine) and (min-width: 769px) {
+    #mobile_continue_queue_send {
+        display: none;
+    }
+}
 
 #form_sheld.isExecutingCommandsFromChatInput {
 
