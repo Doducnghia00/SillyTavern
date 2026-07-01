@@ -2645,6 +2645,16 @@ function getMessageTextHTML(message, { messageId = chat.indexOf(message) }) {
  * @returns {JQuery<HTMLElement>} The newly added message element
  */
 export function addOneMessage(mes, { type = undefined, insertAfter = null, scroll = true, insertBefore = null, forceId = null, showSwipes = true } = {}) {
+    const nativeChatElement = chatElement[0];
+    const wasAtBottom = nativeChatElement ? Math.abs(nativeChatElement.scrollHeight - nativeChatElement.clientHeight - nativeChatElement.scrollTop) < 32 : true;
+    const isPreservingStreamingStart = streamingStartPreserveScrollTop !== null;
+    const shouldScroll = scroll && !scrollLock && wasAtBottom && !isPreservingStreamingStart;
+    const restoreStreamingStartScroll = () => {
+        if (nativeChatElement && isPreservingStreamingStart) {
+            nativeChatElement.scrollTop = streamingStartPreserveScrollTop;
+            scrollLock = true;
+        }
+    };
     // Callers push the new message to chat before calling addOneMessage
     const messageId = (() => {
         if (typeof forceId === 'number') {
@@ -2672,9 +2682,9 @@ export function addOneMessage(mes, { type = undefined, insertAfter = null, scrol
         mes.swipes ??= [mes.mes];
         //This keeps listeners intact.
         messageElement = chatElement.find(`[mesid="${messageId}"]`);
-        updateMessageElement(mes, { messageId, messageElement, adjustMediaScroll: scroll ? SCROLL_BEHAVIOR.ADJUST : SCROLL_BEHAVIOR.NONE });
+        updateMessageElement(mes, { messageId, messageElement, adjustMediaScroll: shouldScroll ? SCROLL_BEHAVIOR.ADJUST : SCROLL_BEHAVIOR.NONE });
     } else {
-        messageElement = updateMessageElement(mes, { messageId, adjustMediaScroll: scroll ? SCROLL_BEHAVIOR.ADJUST : SCROLL_BEHAVIOR.NONE });
+        messageElement = updateMessageElement(mes, { messageId, adjustMediaScroll: shouldScroll ? SCROLL_BEHAVIOR.ADJUST : SCROLL_BEHAVIOR.NONE });
         if (typeof insertAfter === 'number' && insertAfter >= 0) {
             const target = chatElement.find(`.mes[mesid="${insertAfter}"]`);
             $(messageElement).insertAfter(target);
@@ -2692,8 +2702,9 @@ export function addOneMessage(mes, { type = undefined, insertAfter = null, scrol
     chatElement.find('.mes').last().addClass('last_mes');
 
     if (showSwipes) refreshSwipeButtons();
+    restoreStreamingStartScroll();
     // Don't scroll if not inserting last
-    if (!insertAfter && !insertBefore && scroll) {
+    if (!insertAfter && !insertBefore && shouldScroll) {
         scrollChatToBottom({ waitForFrame: true });
     }
 
@@ -2860,6 +2871,8 @@ function formatGenerationTimer(gen_started, gen_finished, tokenCount, reasoningD
 }
 
 let requestId = null;
+let streamingStartPreserveScrollTop = null;
+let streamingStartWasReadingHistory = false;
 
 /**
  * Scrolls the chat to the bottom if configured to do so.
@@ -3716,6 +3729,17 @@ class StreamingProcessor {
 
     async onStartStreaming(text) {
         const continueOnReasoning = !!(this.type === 'continue' && this.promptReasoning.prefixReasoning);
+        const nativeChatElement = chatElement[0];
+        const wasAtBottom = nativeChatElement ? Math.abs(nativeChatElement.scrollHeight - nativeChatElement.clientHeight - nativeChatElement.scrollTop) < 32 : true;
+        const preserveScrollTop = nativeChatElement && !wasAtBottom ? nativeChatElement.scrollTop : null;
+        streamingStartWasReadingHistory = preserveScrollTop !== null;
+        streamingStartPreserveScrollTop = preserveScrollTop;
+        const restoreStreamingStartScroll = () => {
+            if (nativeChatElement && preserveScrollTop !== null) {
+                nativeChatElement.scrollTop = preserveScrollTop;
+                scrollLock = true;
+            }
+        };
         if (continueOnReasoning) {
             this.reasoningHandler.initContinue(this.promptReasoning);
         }
@@ -3729,10 +3753,14 @@ class StreamingProcessor {
             await saveReply({ type: this.type, getMessage: text, fromStreaming: true });
             messageId = chat.length - 1;
             await this.#checkDomElements(messageId, continueOnReasoning);
+            restoreStreamingStartScroll();
+            requestAnimationFrame(restoreStreamingStartScroll);
+            setTimeout(restoreStreamingStartScroll, 0);
+            setTimeout(() => { streamingStartPreserveScrollTop = null; }, 50);
             this.markUIGenStarted();
         }
         hideSwipeButtons({ hideCounters: true });
-        if (!scrollLock) {
+        if (!scrollLock && wasAtBottom) {
             scrollChatToBottom({ waitForFrame: true });
         }
         return messageId;
@@ -3958,7 +3986,10 @@ class StreamingProcessor {
         if (this.messageId == -1) {
             this.messageId = await this.onStartStreaming(this.firstMessageText);
             await delay(1); // delay for message to be rendered
-            scrollLock = false;
+            if (!streamingStartWasReadingHistory) {
+                scrollLock = false;
+            }
+            streamingStartWasReadingHistory = false;
         }
 
         // Stopping strings are expensive to calculate, especially with macros enabled. To remove stopping strings
