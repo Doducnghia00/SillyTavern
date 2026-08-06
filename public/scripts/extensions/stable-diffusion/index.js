@@ -4,6 +4,7 @@ import {
     appendMediaToMessage,
     event_types,
     eventSource,
+    extractMessageFromData,
     formatCharacterAvatar,
     generateQuietPrompt,
     getCharacterAvatar,
@@ -3377,6 +3378,62 @@ const messagePromptSchema = {
 };
 
 /**
+ * Extracts the first complete JSON object from a model response.
+ * Tolerates markdown fences, reasoning text, and other prose around the object.
+ * @param {string} text Raw model response text
+ * @returns {Record<string, any>}
+ */
+function parseMessagePromptJson(text) {
+    const source = String(text || '').trim();
+    const isPromptObject = (/** @type {any} */ object) => object && typeof object === 'object' && !Array.isArray(object)
+        && Boolean(String(object.prompt || object.positive || '').trim())
+        && Boolean(String(object.negative_prompt || object.negative || '').trim());
+    try {
+        const direct = JSON.parse(source);
+        if (isPromptObject(direct)) {
+            return direct;
+        }
+    } catch {
+        // Continue with balanced-object extraction.
+    }
+
+    for (let start = source.indexOf('{'); start !== -1; start = source.indexOf('{', start + 1)) {
+        let depth = 0;
+        let inString = false;
+        let escaped = false;
+        for (let index = start; index < source.length; index++) {
+            const char = source[index];
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                } else if (char === '\\') {
+                    escaped = true;
+                } else if (char === '"') {
+                    inString = false;
+                }
+                continue;
+            }
+            if (char === '"') {
+                inString = true;
+            } else if (char === '{') {
+                depth++;
+            } else if (char === '}' && --depth === 0) {
+                try {
+                    const parsed = JSON.parse(source.slice(start, index + 1));
+                    if (isPromptObject(parsed)) {
+                        return parsed;
+                    }
+                } catch {
+                    break;
+                }
+            }
+        }
+    }
+
+    throw new Error('The message prompt builder did not return a complete JSON object.');
+}
+
+/**
  * Builds a complete diffusion prompt for a chat message using a dedicated model.
  * @param {ChatMessage} message Selected chat message
  * @param {AbortSignal} signal Abort signal
@@ -3424,9 +3481,14 @@ async function buildMessageImagePrompt(message, signal) {
 
     const { generate_data } = await createGenerationParameters(oai_settings, model, 'quiet', messages, { jsonSchema: messagePromptSchema });
     generate_data.stream = false;
-    generate_data.max_tokens = Math.min(Number(generate_data.max_tokens) || 1200, 1200);
-    const response = await ChatCompletionService.sendRequest(generate_data, true, signal);
-    const output = /** @type {any} */ (response).content;
+    generate_data.max_tokens = 8192;
+    const response = /** @type {any} */ (await ChatCompletionService.sendRequest(generate_data, false, signal));
+    const finishReason = response?.choices?.[0]?.finish_reason;
+    if (finishReason === 'length' || finishReason === 'max_tokens') {
+        throw new Error('The message prompt builder output was truncated by the model output limit.');
+    }
+    const rawContent = extractMessageFromData(response, 'openai');
+    const output = parseMessagePromptJson(rawContent);
     // Some providers translate the schema field names to positive/negative despite strict JSON schema.
     const prompt = String(output?.prompt || output?.positive || '').trim();
     const negativePrompt = String(output?.negative_prompt || output?.negative || '').trim();
