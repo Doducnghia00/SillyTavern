@@ -8,6 +8,7 @@ import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import urlJoin from 'url-join';
 import _ from 'lodash';
 import mime from 'mime-types';
+import { Translator } from 'google-translate-api-x';
 
 import { delay, getBasicAuthHeader, isValidUrl, tryParse } from '../util.js';
 import { readSecret, SECRET_KEYS } from './secrets.js';
@@ -296,6 +297,18 @@ router.post('/set-model', async (request, response) => {
 
 router.post('/generate', async (request, response) => {
     try {
+        const prompt = String(request.body.prompt ?? '');
+        const hasVietnamese = /[ăâđêôơư]|[àáạảãèéẹẻẽìíịỉĩòóọỏõùúụủũỳýỵỷỹ]/iu.test(prompt);
+        if (hasVietnamese) {
+            try {
+                const translator = new Translator({ to: 'en', requestFunction: fetch });
+                request.body.prompt = await translator.translate(prompt).then(result => result.text);
+                console.info('SD WebUI prompt translated from Vietnamese to English.');
+            } catch (error) {
+                console.warn('SD WebUI prompt translation failed; using original prompt.', error);
+            }
+        }
+
         try {
             const optionsUrl = new URL(request.body.url);
             optionsUrl.pathname = '/sdapi/v1/options';
