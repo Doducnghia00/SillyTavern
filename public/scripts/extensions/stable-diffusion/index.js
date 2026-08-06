@@ -3427,8 +3427,9 @@ async function buildMessageImagePrompt(message, signal) {
     generate_data.max_tokens = Math.min(Number(generate_data.max_tokens) || 1200, 1200);
     const response = await ChatCompletionService.sendRequest(generate_data, true, signal);
     const output = /** @type {any} */ (response).content;
-    const prompt = String(output?.prompt || '').trim();
-    const negativePrompt = String(output?.negative_prompt || '').trim();
+    // Some providers translate the schema field names to positive/negative despite strict JSON schema.
+    const prompt = String(output?.prompt || output?.positive || '').trim();
+    const negativePrompt = String(output?.negative_prompt || output?.negative || '').trim();
     if (!prompt || !negativePrompt) {
         throw new Error('The message prompt builder returned an incomplete prompt.');
     }
