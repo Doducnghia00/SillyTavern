@@ -51,13 +51,7 @@
                     </label>
                     <small>Uses the current Chat Completion connection without changing the roleplay model. Existing image swipes reuse their saved prompt.</small>
                     <label for="sd_message_prompt_builder_model">Prompt builder model</label>
-                    <div class="flex-container flexnowrap">
-                        <input id="sd_message_prompt_builder_model" class="text_pole flex1" type="text" list="sd_message_prompt_builder_models" placeholder="Leave blank to use the current chat model" />
-                        <datalist id="sd_message_prompt_builder_models"></datalist>
-                        <div id="sd_message_prompt_builder_models_refresh" class="menu_button menu_button_icon" title="Refresh model list">
-                            <i class="fa-solid fa-rotate"></i>
-                        </div>
-                    </div>
+                    <select id="sd_message_prompt_builder_model" class="text_pole"></select>
                     <label for="sd_message_prompt_builder_context">Previous messages to include</label>
                     <input id="sd_message_prompt_builder_context" class="text_pole" type="number" min="0" max="10" step="1" />
                     <label for="sd_message_prompt_builder_character" class="checkbox_label">

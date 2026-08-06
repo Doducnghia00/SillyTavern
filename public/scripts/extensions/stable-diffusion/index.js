@@ -614,13 +614,16 @@ async function loadSettings() {
 }
 
 function refreshMessagePromptBuilderModels() {
-    const datalist = $('#sd_message_prompt_builder_models').empty();
+    const select = $('#sd_message_prompt_builder_model').empty();
     const currentModel = getChatCompletionModel();
-    const models = [...new Set([currentModel, ...model_list.map(x => x?.id)].filter(Boolean))];
+    const selectedModel = extension_settings.sd.message_prompt_builder_model || '';
+    const models = [...new Set([selectedModel, currentModel, ...model_list.map(x => x?.id)].filter(Boolean))];
+
+    select.append($('<option>').val('').text(currentModel ? `Current chat model — ${currentModel}` : t`Current chat model`));
     for (const model of models) {
-        datalist.append($('<option>').val(model));
+        select.append($('<option>').val(model).text(model));
     }
-    $('#sd_message_prompt_builder_model').attr('placeholder', currentModel || t`Enter model ID`);
+    select.val(selectedModel);
 }
 
 function onMessagePromptBuilderInput() {
@@ -6030,7 +6033,7 @@ export async function init() {
     $('#sd_snap').on('input', onSnapInput);
     $('#sd_minimal_prompt_processing').on('input', onMinimalPromptProcessing);
     $('#sd_message_prompt_builder, #sd_message_prompt_builder_model, #sd_message_prompt_builder_context, #sd_message_prompt_builder_character').on('input change', onMessagePromptBuilderInput);
-    $('#sd_message_prompt_builder_models_refresh').on('click', refreshMessagePromptBuilderModels);
+
     $('#sd_clip_skip').on('input', onClipSkipInput);
     $('#sd_seed').on('input', onSeedInput);
     $('#sd_character_prompt_share').on('input', onCharacterPromptShareInput);
