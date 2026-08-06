@@ -5361,24 +5361,6 @@ async function sdMessageButton($icon, { animate, rebuildPrompt = false } = {}) {
     appendMediaToMessage(message, messageElement, SCROLL_BEHAVIOR.KEEP);
 
     await context.saveChat();
-    if (rebuildPrompt) {
-        showImagePromptUsed(newMediaAttachment);
-    }
-}
-
-/**
- * Shows the prompt metadata used for a generated image.
- * @param {MediaAttachment} mediaAttachment Generated media attachment
- */
-function showImagePromptUsed(mediaAttachment) {
-    const metadata = /** @type {any} */ (mediaAttachment);
-    const details = [
-        `Source: ${metadata.prompt_builder_source}`,
-        metadata.prompt_builder_model ? `Model: ${metadata.prompt_builder_model}` : '',
-        `\nPrompt:\n${mediaAttachment.title || ''}`,
-        `\nNegative prompt:\n${mediaAttachment.negative || ''}`,
-    ].filter(Boolean).join('\n');
-    void Popup.show.text(t`Image Prompt Used`, details);
 }
 
 async function onCharacterPromptShareInput() {
