@@ -292,6 +292,7 @@ const defaultSettings = {
     message_prompt_builder_model: '',
     message_prompt_builder_context: 3,
     message_prompt_builder_character: true,
+    message_prompt_builder_fallback: false,
     message_prompt_builder_defaults_version: MESSAGE_PROMPT_BUILDER_DEFAULTS_VERSION,
 
     prompts: promptTemplates,
@@ -571,11 +572,13 @@ async function loadSettings() {
     $('#sd_message_prompt_builder_model').val(extension_settings.sd.message_prompt_builder_model);
     $('#sd_message_prompt_builder_context').val(extension_settings.sd.message_prompt_builder_context);
     $('#sd_message_prompt_builder_character').prop('checked', extension_settings.sd.message_prompt_builder_character);
+    $('#sd_message_prompt_builder_fallback').prop('checked', extension_settings.sd.message_prompt_builder_fallback);
     console.info('[Image Generation] prompt builder settings', JSON.stringify({
         enabled: extension_settings.sd.message_prompt_builder,
         model: extension_settings.sd.message_prompt_builder_model || '(current chat model)',
         contextMessages: extension_settings.sd.message_prompt_builder_context,
         includeCharacter: extension_settings.sd.message_prompt_builder_character,
+        fallbackEnabled: extension_settings.sd.message_prompt_builder_fallback,
         defaultsVersion: extension_settings.sd.message_prompt_builder_defaults_version,
     }));
     $('#sd_clip_skip').val(extension_settings.sd.clip_skip);
@@ -631,6 +634,7 @@ function onMessagePromptBuilderInput() {
     extension_settings.sd.message_prompt_builder_model = String($('#sd_message_prompt_builder_model').val() || '').trim();
     extension_settings.sd.message_prompt_builder_context = clamp(Number($('#sd_message_prompt_builder_context').val()) || 0, 0, 10);
     extension_settings.sd.message_prompt_builder_character = !!$('#sd_message_prompt_builder_character').prop('checked');
+    extension_settings.sd.message_prompt_builder_fallback = !!$('#sd_message_prompt_builder_fallback').prop('checked');
     saveSettingsDebounced();
 }
 
@@ -5439,6 +5443,11 @@ async function generateMediaSwipe(mediaAttachment, message, onStart, onComplete,
                 if (abortController.signal.aborted) {
                     return null;
                 }
+                if (!extension_settings.sd.message_prompt_builder_fallback) {
+                    console.error('SD: Message prompt builder failed; image generation stopped.', error);
+                    toastr.error(t`Prompt builder failed. Image generation was stopped.`, t`Image Generation`);
+                    return null;
+                }
                 console.warn('SD: Message prompt builder failed; using the original message.', error);
                 toastr.warning(t`Prompt builder failed. Using the original message instead.`, t`Image Generation`);
                 savedPrompt = String(message.mes || '');
@@ -6032,7 +6041,7 @@ export async function init() {
     $('#sd_multimodal_captioning').on('input', onMultimodalCaptioningInput);
     $('#sd_snap').on('input', onSnapInput);
     $('#sd_minimal_prompt_processing').on('input', onMinimalPromptProcessing);
-    $('#sd_message_prompt_builder, #sd_message_prompt_builder_model, #sd_message_prompt_builder_context, #sd_message_prompt_builder_character').on('input change', onMessagePromptBuilderInput);
+    $('#sd_message_prompt_builder, #sd_message_prompt_builder_model, #sd_message_prompt_builder_context, #sd_message_prompt_builder_character, #sd_message_prompt_builder_fallback').on('input change', onMessagePromptBuilderInput);
 
     $('#sd_clip_skip').on('input', onClipSkipInput);
     $('#sd_seed').on('input', onSeedInput);

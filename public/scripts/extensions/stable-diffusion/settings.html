@@ -58,6 +58,11 @@
                         <input id="sd_message_prompt_builder_character" type="checkbox" />
                         <span>Include character description, personality, and scenario</span>
                     </label>
+                    <label for="sd_message_prompt_builder_fallback" class="checkbox_label">
+                        <input id="sd_message_prompt_builder_fallback" type="checkbox" />
+                        <span>Fall back to the original/translated message if prompt building fails</span>
+                    </label>
+                    <small>Disabled by default. When disabled, a prompt builder failure stops image generation.</small>
                 </div>
             </div>
             <label for="sd_source" data-i18n="Source">Source</label>
