@@ -54,6 +54,8 @@ Both returned HTTP 200, but the prompt was not an LLM-produced visual descriptio
   - `sendGenerationRequest()` around lines 3317–3450
   - `generateAutoImage()` around lines 3797–3861
 
-## Desired behavior for discussion
+## Implemented resolution
 
-A more context-aware flow could use the selected message plus a bounded number of preceding messages, ask the configured LLM for a concise English visual prompt, then save that processed prompt for later swipes. The design still needs decisions about context size, latency/cost, language, manual review, privacy, fallback behavior, and whether existing swipe semantics should remain deterministic.
+The message paintbrush now has an optional Message Prompt Builder. For the first image on a message it sends the selected message, bounded preceding context, character information, and current positive/negative guidance to a separately selected Chat Completion model. The model returns final structured English `prompt` and `negative_prompt` values. They are saved with the generated media and reused without another LLM call on later swipes.
+
+If prompt construction fails, the original message flow remains available and the A1111 server endpoint still translates Vietnamese as a final fallback.

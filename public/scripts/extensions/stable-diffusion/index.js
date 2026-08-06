@@ -59,7 +59,8 @@ import { commonEnumProviders } from '../../slash-commands/SlashCommandCommonEnum
 import { ToolManager } from '../../tool-calling.js';
 import { macros, MacroCategory } from '../../macros/macro-system.js';
 import { t, translate } from '../../i18n.js';
-import { oai_settings } from '../../openai.js';
+import { createGenerationParameters, getChatCompletionModel, model_list, oai_settings } from '../../openai.js';
+import { ChatCompletionService } from '../../custom-request.js';
 import { power_user } from '/scripts/power-user.js';
 import { MacrosParser } from '/scripts/macros.js';
 import { ActionLoaderHandle, loader } from '/scripts/action-loader.js';
@@ -281,6 +282,10 @@ const defaultSettings = {
     free_extend: false,
     function_tool: false,
     minimal_prompt_processing: false,
+    message_prompt_builder: true,
+    message_prompt_builder_model: '',
+    message_prompt_builder_context: 3,
+    message_prompt_builder_character: true,
 
     prompts: promptTemplates,
 
@@ -545,6 +550,10 @@ async function loadSettings() {
     $('#sd_comfy_runpod_url').val(extension_settings.sd.comfy_runpod_url);
     $('#sd_snap').prop('checked', extension_settings.sd.snap);
     $('#sd_minimal_prompt_processing').prop('checked', extension_settings.sd.minimal_prompt_processing);
+    $('#sd_message_prompt_builder').prop('checked', extension_settings.sd.message_prompt_builder);
+    $('#sd_message_prompt_builder_model').val(extension_settings.sd.message_prompt_builder_model);
+    $('#sd_message_prompt_builder_context').val(extension_settings.sd.message_prompt_builder_context);
+    $('#sd_message_prompt_builder_character').prop('checked', extension_settings.sd.message_prompt_builder_character);
     $('#sd_clip_skip').val(extension_settings.sd.clip_skip);
     $('#sd_clip_skip_value').val(extension_settings.sd.clip_skip);
     $('#sd_seed').val(extension_settings.sd.seed);
@@ -577,6 +586,25 @@ async function loadSettings() {
     registerFunctionTool();
 
     await loadSettingOptions();
+    refreshMessagePromptBuilderModels();
+}
+
+function refreshMessagePromptBuilderModels() {
+    const datalist = $('#sd_message_prompt_builder_models').empty();
+    const currentModel = getChatCompletionModel();
+    const models = [...new Set([currentModel, ...model_list.map(x => x?.id)].filter(Boolean))];
+    for (const model of models) {
+        datalist.append($('<option>').val(model));
+    }
+    $('#sd_message_prompt_builder_model').attr('placeholder', currentModel || t`Enter model ID`);
+}
+
+function onMessagePromptBuilderInput() {
+    extension_settings.sd.message_prompt_builder = !!$('#sd_message_prompt_builder').prop('checked');
+    extension_settings.sd.message_prompt_builder_model = String($('#sd_message_prompt_builder_model').val() || '').trim();
+    extension_settings.sd.message_prompt_builder_context = clamp(Number($('#sd_message_prompt_builder_context').val()) || 0, 0, 10);
+    extension_settings.sd.message_prompt_builder_character = !!$('#sd_message_prompt_builder_character').prop('checked');
+    saveSettingsDebounced();
 }
 
 /**
@@ -3303,6 +3331,81 @@ async function generatePrompt(quietPrompt) {
     return processedReply;
 }
 
+const messagePromptSchema = {
+    name: 'image_prompt',
+    strict: true,
+    value: {
+        type: 'object',
+        properties: {
+            prompt: { type: 'string', minLength: 1 },
+            negative_prompt: { type: 'string', minLength: 1 },
+        },
+        required: ['prompt', 'negative_prompt'],
+        additionalProperties: false,
+    },
+};
+
+/**
+ * Builds a complete diffusion prompt for a chat message using a dedicated model.
+ * @param {ChatMessage} message Selected chat message
+ * @param {AbortSignal} signal Abort signal
+ * @returns {Promise<{prompt: string, negative_prompt: string}>}
+ */
+async function buildMessageImagePrompt(message, signal) {
+    const context = getContext();
+    const messageIndex = context.chat.indexOf(message);
+    const contextCount = clamp(Number(extension_settings.sd.message_prompt_builder_context) || 0, 0, 10);
+    const previousMessages = context.chat
+        .slice(0, messageIndex)
+        .filter(x => !x.is_system);
+    const priorMessages = (contextCount > 0 ? previousMessages.slice(-contextCount) : [])
+        .map(x => `${x.name || (x.is_user ? context.name1 : context.name2)}: ${x.mes}`)
+        .join('\n\n');
+
+    const character = this_chid !== undefined && !selected_group ? context.characters?.[this_chid] : null;
+    const characterData = character?.data || character || {};
+    const characterInfo = extension_settings.sd.message_prompt_builder_character && character
+        ? [
+            `Name: ${character.name || characterData.name || context.name2 || ''}`,
+            `Description: ${characterData.description || character.description || ''}`,
+            `Personality: ${characterData.personality || character.personality || ''}`,
+            `Scenario: ${characterData.scenario || character.scenario || ''}`,
+        ].join('\n')
+        : 'Not provided.';
+
+    const positiveGuidance = combinePrefixes(extension_settings.sd.prompt_prefix, getCharacterPrefix());
+    const negativeGuidance = combinePrefixes(extension_settings.sd.negative_prompt, getCharacterNegativePrefix());
+    const messages = [
+        {
+            role: 'system',
+            content: 'Create a final Stable Diffusion prompt for one coherent still image. Return JSON only, matching the provided schema. Both fields must be complete and in English. Use concise comma-separated diffusion tags and short visual phrases, not prose. Include visible subjects, count, appearance, clothing, pose/action, physical interaction, location, composition, camera framing, lighting, and mood when supported by the input. Preserve character identity and explicit visual details. Exclude dialogue, thoughts, backstory, explanations, markdown, and anything not visible. Do not invent conflicting details. The positive and negative guidance are inputs to incorporate, not text to discuss.',
+        },
+        {
+            role: 'user',
+            content: `CHARACTER INFORMATION\n${characterInfo}\n\nRECENT CONTEXT\n${priorMessages || 'None.'}\n\nSELECTED MESSAGE\n${String(message.mes || '')}\n\nPOSITIVE GUIDANCE\n${positiveGuidance || 'None.'}\n\nNEGATIVE GUIDANCE\n${negativeGuidance || 'None.'}`,
+        },
+    ];
+
+    const model = extension_settings.sd.message_prompt_builder_model || getChatCompletionModel();
+    if (!model) {
+        throw new Error('No Chat Completion model is available for the message prompt builder.');
+    }
+
+    const { generate_data } = await createGenerationParameters(oai_settings, model, 'quiet', messages, { jsonSchema: messagePromptSchema });
+    generate_data.stream = false;
+    generate_data.max_tokens = Math.min(Number(generate_data.max_tokens) || 1200, 1200);
+    const response = await ChatCompletionService.sendRequest(generate_data, true, signal);
+    const output = /** @type {any} */ (response).content;
+    const prompt = String(output?.prompt || '').trim();
+    const negativePrompt = String(output?.negative_prompt || '').trim();
+    if (!prompt || !negativePrompt) {
+        throw new Error('The message prompt builder returned an incomplete prompt.');
+    }
+
+    console.info('SD: Message prompt builder output', { model, prompt, negative_prompt: negativePrompt });
+    return { prompt, negative_prompt: negativePrompt };
+}
+
 /**
  * Sends a request to image generation endpoint and processes the result.
  * @param {number} generationType Type of image generation
@@ -3312,9 +3415,10 @@ async function generatePrompt(quietPrompt) {
  * @param {function} callback Callback function to be called after image generation
  * @param {string} initiator The initiator of the image generation
  * @param {AbortSignal} signal Abort signal to cancel the request
+ * @param {boolean} completePrompt Whether prompt and negative prompt are already complete
  * @returns
  */
-async function sendGenerationRequest(generationType, prompt, additionalNegativePrefix, characterName, callback, initiator, signal) {
+async function sendGenerationRequest(generationType, prompt, additionalNegativePrefix, characterName, callback, initiator, signal, completePrompt = false) {
     const noCharPrefix = [generationMode.FREE, generationMode.BACKGROUND, generationMode.USER, generationMode.USER_MULTIMODAL, generationMode.FREE_EXTENDED];
     const isCharChat = this_chid !== undefined && !selected_group;
     const ignoreNoCharForSwipe = initiator === initiators.swipe && isCharChat;
@@ -3329,8 +3433,8 @@ async function sendGenerationRequest(generationType, prompt, additionalNegativeP
         ? extension_settings.sd.negative_prompt
         : combinePrefixes(extension_settings.sd.negative_prompt, getCharacterNegativePrefix());
 
-    const prefixedPrompt = substituteParams(combinePrefixes(prefix, prompt, '{prompt}'));
-    const negativePrompt = substituteParams(combinePrefixes(additionalNegativePrefix, negativePrefix));
+    const prefixedPrompt = completePrompt ? prompt : substituteParams(combinePrefixes(prefix, prompt, '{prompt}'));
+    const negativePrompt = completePrompt ? additionalNegativePrefix : substituteParams(combinePrefixes(additionalNegativePrefix, negativePrefix));
 
     let result = { format: '', data: '' };
     const currentChatId = getCurrentChatId();
@@ -5286,8 +5390,28 @@ async function generateMediaSwipe(mediaAttachment, message, onStart, onComplete,
 
     try {
         const callback = (_a, _b, _c, _d, _e, _f, format) => { result.type = isVideo(format) ? MEDIA_TYPE.VIDEO : MEDIA_TYPE.IMAGE; };
-        const savedPrompt = mediaAttachment.title ?? message.extra.title ?? '';
-        const savedNegative = mediaAttachment.negative ?? message.extra.negative ?? '';
+        let savedPrompt = mediaAttachment.title ?? message.extra.title ?? '';
+        let savedNegative = mediaAttachment.negative ?? message.extra.negative ?? '';
+        const mediaMetadata = /** @type {any} */ (mediaAttachment);
+        let completePrompt = mediaMetadata.prompt_complete === true;
+        const isFirstMessageImage = !mediaAttachment.url && !message.extra.media.length;
+        if (isFirstMessageImage && extension_settings.sd.message_prompt_builder) {
+            const toast = toastr.info(t`Building an image prompt with the selected model...`, t`Image Generation`);
+            try {
+                const builtPrompt = await buildMessageImagePrompt(message, abortController.signal);
+                savedPrompt = builtPrompt.prompt;
+                savedNegative = builtPrompt.negative_prompt;
+                completePrompt = true;
+            } catch (error) {
+                if (abortController.signal.aborted) {
+                    return null;
+                }
+                console.warn('SD: Message prompt builder failed; using the original message.', error);
+                toastr.warning(t`Prompt builder failed. Using the original message instead.`, t`Image Generation`);
+            } finally {
+                toastr.clear(toast);
+            }
+        }
         const refineArgs = {
             negative: savedNegative,
             resolution: mediaAttachment.width && mediaAttachment.height ? `${mediaAttachment.width}x${mediaAttachment.height}` : null,
@@ -5310,10 +5434,11 @@ async function generateMediaSwipe(mediaAttachment, message, onStart, onComplete,
         });
 
         onStart();
-        result.url = await sendGenerationRequest(generationType, prompt, refineArgs.negative, characterName, callback, initiators.swipe, abortController.signal);
+        result.url = await sendGenerationRequest(generationType, prompt, refineArgs.negative, characterName, callback, initiators.swipe, abortController.signal, completePrompt);
         result.generation_type = generationType;
         result.title = prompt;
         result.negative = refineArgs.negative;
+        /** @type {any} */ (result).prompt_complete = completePrompt;
         if (refineArgs.resolution) {
             result.width = mediaAttachment.width;
             result.height = mediaAttachment.height;
@@ -5867,6 +5992,8 @@ export async function init() {
     $('#sd_multimodal_captioning').on('input', onMultimodalCaptioningInput);
     $('#sd_snap').on('input', onSnapInput);
     $('#sd_minimal_prompt_processing').on('input', onMinimalPromptProcessing);
+    $('#sd_message_prompt_builder, #sd_message_prompt_builder_model, #sd_message_prompt_builder_context, #sd_message_prompt_builder_character').on('input change', onMessagePromptBuilderInput);
+    $('#sd_message_prompt_builder_models_refresh').on('click', refreshMessagePromptBuilderModels);
     $('#sd_clip_skip').on('input', onClipSkipInput);
     $('#sd_seed').on('input', onSeedInput);
     $('#sd_character_prompt_share').on('input', onCharacterPromptShareInput);
@@ -5928,6 +6055,8 @@ export async function init() {
     });
 
     eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
+    eventSource.on(event_types.CHATCOMPLETION_SOURCE_CHANGED, refreshMessagePromptBuilderModels);
+    eventSource.on(event_types.CHATCOMPLETION_MODEL_CHANGED, refreshMessagePromptBuilderModels);
     eventSource.on(event_types.IMAGE_SWIPED, onImageSwiped);
 
     [event_types.SECRET_WRITTEN, event_types.SECRET_DELETED, event_types.SECRET_ROTATED].forEach(event => {
