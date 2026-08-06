@@ -69,8 +69,8 @@ export { MODULE_NAME };
 
 const MODULE_NAME = 'sd';
 const IMAGE_GEN_BUILD = Object.freeze({
-    version: '1.1.2',
-    buildTime: '2026-08-06T23:52:00+07:00',
+    version: '1.1.1',
+    buildTime: '2026-08-06T23:08:47+07:00',
 });
 const MESSAGE_PROMPT_BUILDER_DEFAULTS_VERSION = 1;
 console.info('[Image Generation] module loaded', JSON.stringify(IMAGE_GEN_BUILD));
