@@ -5140,7 +5140,7 @@ async function addSDGenButtons() {
         placement: 'top',
     });
 
-    $(document).on('click', '.sd_message_gen', (e) => sdMessageButton($(e.currentTarget), { animate: false }));
+    $(document).on('click', '.sd_message_gen', (e) => sdMessageButton($(e.currentTarget), { animate: false, rebuildPrompt: true }));
 
     $(document).on('click touchend', function (e) {
         const target = $(e.target);
@@ -5248,9 +5248,10 @@ const buttonAbortControllers = new WeakMap();
  * @param {JQuery<HTMLElement>} $icon The click target.
  * @param {Object} [options] Additional options for image generation.
  * @param {boolean} [options.animate] Whether to animate the media during generation.
+ * @param {boolean} [options.rebuildPrompt] Whether to build a new prompt instead of reusing media metadata.
  * @returns {Promise<void>} A promise that resolves when the image generation process is complete.
  */
-async function sdMessageButton($icon, { animate } = {}) {
+async function sdMessageButton($icon, { animate, rebuildPrompt = false } = {}) {
     /**
      * Sets the icon to indicate busy or idle state.
      * @param {boolean} isBusy Whether the icon should indicate a busy state.
@@ -5321,6 +5322,7 @@ async function sdMessageButton($icon, { animate } = {}) {
         () => setBusyIcon(true),
         () => setBusyIcon(false),
         abortController,
+        rebuildPrompt,
     );
 
     if (!newMediaAttachment) {
@@ -5335,6 +5337,24 @@ async function sdMessageButton($icon, { animate } = {}) {
     appendMediaToMessage(message, messageElement, SCROLL_BEHAVIOR.KEEP);
 
     await context.saveChat();
+    if (rebuildPrompt) {
+        showImagePromptUsed(newMediaAttachment);
+    }
+}
+
+/**
+ * Shows the prompt metadata used for a generated image.
+ * @param {MediaAttachment} mediaAttachment Generated media attachment
+ */
+function showImagePromptUsed(mediaAttachment) {
+    const metadata = /** @type {any} */ (mediaAttachment);
+    const details = [
+        `Source: ${metadata.prompt_builder_source}`,
+        metadata.prompt_builder_model ? `Model: ${metadata.prompt_builder_model}` : '',
+        `\nPrompt:\n${mediaAttachment.title || ''}`,
+        `\nNegative prompt:\n${mediaAttachment.negative || ''}`,
+    ].filter(Boolean).join('\n');
+    void Popup.show.text(t`Image Prompt Used`, details);
 }
 
 async function onCharacterPromptShareInput() {
@@ -5370,9 +5390,10 @@ async function writePromptFields(characterId) {
  * @param {Function} onStart - Callback function to be called when generation starts.
  * @param {Function} onComplete - Callback function to be called when generation completes.
  * @param {AbortController} abortController - An AbortController to handle cancellation of the generation process.
+ * @param {boolean} rebuildPrompt Whether to build a new prompt with the configured LLM.
  * @returns {Promise<MediaAttachment|null>} - A promise that resolves to the newly generated media attachment, or null if generation failed or was aborted.
  */
-async function generateMediaSwipe(mediaAttachment, message, onStart, onComplete, abortController = new AbortController()) {
+async function generateMediaSwipe(mediaAttachment, message, onStart, onComplete, abortController = new AbortController(), rebuildPrompt = false) {
     const stopListener = () => abortController.abort('Aborted by user');
     const generationType = mediaAttachment.generation_type ?? message?.extra?.generationType ?? generationMode.FREE;
     let dimensions = { width: extension_settings.sd.width, height: extension_settings.sd.height };
@@ -5394,20 +5415,28 @@ async function generateMediaSwipe(mediaAttachment, message, onStart, onComplete,
         let savedNegative = mediaAttachment.negative ?? message.extra.negative ?? '';
         const mediaMetadata = /** @type {any} */ (mediaAttachment);
         let completePrompt = mediaMetadata.prompt_complete === true;
-        const isFirstMessageImage = !mediaAttachment.url && !message.extra.media.length;
-        if (isFirstMessageImage && extension_settings.sd.message_prompt_builder) {
+        let promptSource = mediaMetadata.prompt_builder_source || (completePrompt ? 'Saved Prompt' : 'Original Prompt');
+        let promptModel = mediaMetadata.prompt_builder_model || '';
+        if (rebuildPrompt && extension_settings.sd.message_prompt_builder) {
             const toast = toastr.info(t`Building an image prompt with the selected model...`, t`Image Generation`);
             try {
                 const builtPrompt = await buildMessageImagePrompt(message, abortController.signal);
                 savedPrompt = builtPrompt.prompt;
                 savedNegative = builtPrompt.negative_prompt;
                 completePrompt = true;
+                promptSource = 'LLM Builder';
+                promptModel = extension_settings.sd.message_prompt_builder_model || getChatCompletionModel();
             } catch (error) {
                 if (abortController.signal.aborted) {
                     return null;
                 }
                 console.warn('SD: Message prompt builder failed; using the original message.', error);
                 toastr.warning(t`Prompt builder failed. Using the original message instead.`, t`Image Generation`);
+                savedPrompt = String(message.mes || '');
+                savedNegative = '';
+                completePrompt = false;
+                promptSource = 'Fallback';
+                promptModel = '';
             } finally {
                 toastr.clear(toast);
             }
@@ -5439,6 +5468,8 @@ async function generateMediaSwipe(mediaAttachment, message, onStart, onComplete,
         result.title = prompt;
         result.negative = refineArgs.negative;
         /** @type {any} */ (result).prompt_complete = completePrompt;
+        /** @type {any} */ (result).prompt_builder_source = promptSource;
+        /** @type {any} */ (result).prompt_builder_model = promptModel;
         if (refineArgs.resolution) {
             result.width = mediaAttachment.width;
             result.height = mediaAttachment.height;
@@ -5496,7 +5527,7 @@ async function onImageSwiped({ message, element, direction }) {
         accountStorage.setItem(key, 'true');
     }
 
-    await sdMessageButton(element.find('.sd_message_gen'), { animate: true });
+    await sdMessageButton(element.find('.sd_message_gen'), { animate: true, rebuildPrompt: false });
 }
 
 /**
